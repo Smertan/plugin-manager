@@ -1,0 +1,14 @@
+[package]
+name = "plugin_mods"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+plugin_manager = { path = "../../plugin_manager" }
+
+[package.metadata]
+plugin_a_path = "/home/dre/projects/plugin_manager/target/release/libplugin_mods.so"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+# path = "plugin_mods/src/lib.rs"

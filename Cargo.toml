@@ -1,10 +1,2 @@
-[package]
-name = "plugin_manager"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-libloading = "0.8.8"
-log = "0.4.28"
-serde = { version = "1.0.225", features = ["derive"] }
-toml = "0.9.6"
+[workspace]
+members = [".", "tests/plugin_mods"]

@@ -7,7 +7,7 @@ use std::mem::ManuallyDrop;
 use std::path::Path;
 
 pub struct PluginManager {
-    plugins: HashMap<String, Box<dyn Plugin>>,
+    pub plugins: HashMap<String, Box<dyn Plugin>>,
 }
 
 pub trait Plugin: Send + Sync + Any {
@@ -27,6 +27,7 @@ impl PluginManager {
 
     pub fn register_plugin(&mut self, plugin: Box<dyn Plugin>) {
         log::debug!("Registering plugin: {:?}", plugin.name());
+        // println!("Registering plugin: {:?}", plugin.name());
         let name = plugin.name().to_string();
         self.plugins.insert(name, plugin);
     }
@@ -63,126 +64,114 @@ impl PluginManager {
             Err(format!("Plugin '{}' not found", name).into())
         }
     }
-}
 
-pub fn load_plugin(
-    filename: &str,
-) -> Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>> {
-    let path = Path::new(filename);
-    if !path.exists() {
-        let msg = format!("Plugin file does not exist: {}", filename);
-        log::debug!("{msg}");
-        return Err(msg.into());
+    /// Loops over the plugins and registers them to the plugin manager
+    fn register_plugins_vec(&mut self, plugins: Vec<Box<dyn Plugin>>) {
+        for plugin in plugins {
+            self.register_plugin(plugin);
+        }
     }
+    pub fn activate_plugins(mut self) -> Result<PluginManager, Box<dyn std::error::Error>> {
+        let meta_data = self.get_plugin_metadata();
+        log::debug!("Plugin metadata: {:?}", meta_data);
 
-    let library = unsafe { Library::new(path)? };
-    log::debug!("Library loaded successfully");
-
-    let create_plugin: Symbol<PluginCreate> = unsafe { library.get(b"create_plugins")? };
-    log::debug!("Found create_plugin symbol");
-
-    let plugins = unsafe { create_plugin() };
-    log::debug!("Plugin created successfully");
-    log::debug!("Plugin name: {}", plugins[0].name());
-
-    Ok((library, plugins))
-}
-
-pub fn activate_plugins() -> Result<PluginManager, Box<dyn std::error::Error>> {
-    let mut plugin_manager = PluginManager::new();
-    println!(
-        "Current working directory: {}",
-        std::env::current_dir()?.display()
-    );
-    let meta_data = get_plugin_path();
-    log::debug!("Plugin metadata: {:?}", meta_data);
-
-    // access all MetaData fields in meta_data and get plugin path
-    // println!("Plugin path: {:#?}", plugin_path);
-    let plugin_path = "/home/dre/projects/plugin_manager/target/release/libplugin_mods.so";
-
-    // Use ManuallyDrop to ensure the library isn't unloaded prematurely
-    match meta_data {
-        Metadata {
-            plugin_a_path: Some(path),
-        } => {
-            println!("Plugin A path found: {}", path);
-            let (library, plugins) = load_plugin(plugin_path)?;
-
-            for plugin in plugins {
-                println!("Registering plugin...");
-                let plugin_name = plugin.name();
-                plugin_manager.register_plugin(plugin);
-
-                println!("Attempting to execute plugin...");
-                plugin_manager.execute_plugin(plugin_name.as_str(), &())?;
-                println!("Plugin executed successfully from match statement");
+        // Use ManuallyDrop to ensure the library isn't unloaded prematurely
+        match meta_data {
+            Metadata {
+                plugins: Some(path),
+            } => {
+                for (key, path) in path.as_object().unwrap() {
+                    log::debug!("loading plugin: {}", key);
+                    if path.is_object() {
+                        for (key, path) in path.as_object().unwrap() {
+                            log::debug!("loading plugin: {}", key);
+                            let (library, plugins) = self.load_plugin(path.as_str().unwrap())?;
+                            self.register_plugins_vec(plugins);
+                            let _library = ManuallyDrop::new(library);
+                        }
+                    } else {
+                        let (library, plugins) = self.load_plugin(path.as_str().unwrap())?;
+                        self.register_plugins_vec(plugins);
+                        let _library = ManuallyDrop::new(library);
+                    }
+                }
             }
-            println!("");
-            // _ = library.close();
-            let _library = ManuallyDrop::new(library);
+            Metadata { plugins: None } => {
+                log::error!("No plugin metadata found in manifest");
+                return Err(format!("No plugin metadata found in manifest").into());
+            }
         }
-        Metadata {
-            plugin_a_path: None,
-        } => {
-            println!("No path found for Plugin A");
-            // Handle the case where no path is specified
-        }
+
+        Ok(self)
     }
 
-    Ok(plugin_manager)
-}
-
-pub fn get_plugin_path() -> Metadata {
-    let plugin_a_path = std::env::var("CARGO_MANIFEST_PATH").unwrap_or_else(|_| ".".to_string());
-
-    let file_string = std::fs::read_to_string(plugin_a_path);
-    let manifest = match file_string {
-        Ok(manifest) => manifest,
-        Err(msg) => {
-            eprintln!("Error reading manifest file {}", msg);
-            return Metadata {
-                plugin_a_path: None,
-            };
+    /// Loads a plugin from a shared object file and registers it to the plugin manager.
+    pub fn load_plugin(
+        &self,
+        filename: &str,
+    ) -> Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>> {
+        let path = Path::new(filename);
+        if !path.exists() {
+            let msg = format!("Plugin file does not exist: {}", filename);
+            log::error!("{msg}");
+            return Err(msg.into());
+        } else {
+            log::debug!("Attempting to load plugin: {}", filename);
         }
-    };
-    let value: toml::Value = toml::from_str(&manifest).unwrap();
 
-    let meta_data = value
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.as_table());
-    println!("meta_data: {:?}", meta_data);
-    match meta_data {
-        Some(meta_data) => {
+        let library = unsafe { Library::new(path)? };
+        log::debug!("Library loaded successfully");
+
+        let create_plugin: Symbol<PluginCreate> = unsafe { library.get(b"create_plugins")? };
+        log::debug!("Found create_plugins symbol");
+
+        let plugins = unsafe { create_plugin() };
+        log::debug!("Plugin created successfully");
+
+        Ok((library, plugins))
+    }
+
+    /// Retrieves the environment variable CARGO_MANIFEST_PATH containing the
+    /// path to  manifest file. The file should contain the plugin metadata
+    /// in TOML format which contains the following structure:
+    ///
+    /// ```toml
+    /// [package.metadata.plugins]
+    /// plugin_a = "/path/to/plugin_a.so"
+    ///
+    /// [package.metadata.plugins.inventory]
+    /// inventory_plugin = "/path/to/inventory_plugin.so"
+    /// ```
+    pub fn get_plugin_metadata(&self) -> Metadata {
+        let plugin_a_path =
+            std::env::var("CARGO_MANIFEST_PATH").unwrap_or_else(|_| ".".to_string());
+
+        let file_string = std::fs::read_to_string(plugin_a_path);
+        let manifest = match file_string {
+            Ok(manifest) => manifest,
+            Err(msg) => {
+                eprintln!("Error reading manifest file {}", msg);
+                return Metadata { plugins: None };
+            }
+        };
+        let value: toml::Value = toml::from_str(&manifest).unwrap();
+        let metadata = if let Some(meta_data) = value
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.as_table())
+        {
             let meta: Result<Metadata, toml::de::Error> =
                 toml::from_str(&toml::to_string(meta_data).unwrap());
-            println!("cargo:rustc-env=PLUGIN_A_PATH={:?}", meta.unwrap());
-        }
-        None => {
-            println!("cargo:rustc-env=PLUGIN_A_PATH=not_found");
-        }
+            meta.unwrap()
+        } else {
+            Metadata { plugins: None }
+        };
+        metadata
     }
-    let metadata = if let Some(meta_data) = value
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.as_table())
-    {
-        let meta: Result<Metadata, toml::de::Error> =
-            toml::from_str(&toml::to_string(meta_data).unwrap());
-        meta.unwrap()
-    } else {
-        Metadata {
-            plugin_a_path: None,
-        }
-    };
-    metadata
 }
-
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
-    pub plugin_a_path: Option<String>,
-    // plugins: Option<Plugins>,
+    pub plugins: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -198,27 +187,45 @@ mod tests {
     #[test]
     fn get_plugin_path_test() {
         set_env_var();
-        let metadata = get_plugin_path();
-        let plugin_path = metadata.plugin_a_path.clone().unwrap();
+        let plugin_manager = PluginManager::new();
+        let metadata = plugin_manager.get_plugin_metadata();
+        let plugins = metadata.plugins.clone().unwrap();
         assert_eq!(
-            plugin_path,
-            "/home/dre/projects/plugin_manager/target/release/libplugin_mods.so"
+            plugins.get("plugin_a_path").unwrap(),
+            "../tests/target/release/libplugin_mods.so"
         );
     }
+
+    // #[test]
+    // fn get_plugin_inventory_test() {
+    //     set_env_var();
+    //     let metadata = get_plugin_path();
+    //     let plugins = metadata.plugins.clone().unwrap();
+    //     assert_eq!(
+    //         plugins
+    //             .get("inventory")
+    //             .unwrap()
+    //             .get("inventory_plugin")
+    //             .unwrap(),
+    //         "my_inventory_plugin"
+    //     );
+    // }
 
     #[test]
     fn activate_plugins_test() {
         set_env_var();
-        let plugin_manager = activate_plugins().unwrap();
+        let mut plugin_manager = PluginManager::new();
+        plugin_manager = plugin_manager.activate_plugins().unwrap();
         assert!(plugin_manager.get_plugin("plugin_a").is_some());
     }
 
     #[test]
     fn load_plugin_test() {
-        let (_library, plugins) =
-            load_plugin("/home/dre/projects/plugin_manager/target/release/libplugin_mods.so")
-                .unwrap();
-        assert_eq!(plugins.len(), 1);
+        let plugin_manager = PluginManager::new();
+        let (_library, plugins) = plugin_manager
+            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .unwrap();
+        assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
     }
 }

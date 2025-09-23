@@ -6,5 +6,6 @@ use plugin_manager::Plugin;
 pub fn create_plugins() -> Vec<Box<dyn Plugin>> {
     let mut plugins: Vec<Box<dyn Plugin>> = Vec::new();
     plugins.push(Box::new(plugin_a::PluginA));
+    plugins.push(Box::new(plugin_b::PluginB));
     plugins
 }

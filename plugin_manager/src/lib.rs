@@ -6,13 +6,46 @@ use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::path::Path;
 
+type PathString = String;
+
+#[derive(Deserialize, Debug)]
+pub struct Metadata {
+    pub plugins: Option<HashMap<String, PluginEntry>>,
+}
+
+/// Information about a plugin entry. This can either be a single plugin
+/// or a group of plugins.
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum PluginEntry {
+    Individual(PathString),
+    Group(HashMap<String, PathString>),
+}
+
+/// Information about a loaded plugin, including the plugin itself and its group.
+pub struct PluginInfo {
+    pub plugin: Box<dyn Plugin>,
+    pub group: Option<String>,
+}
+
+/// Manages the lifecycle of loaded plugins.
 pub struct PluginManager {
-    pub plugins: HashMap<String, Box<dyn Plugin>>,
+    pub plugins: HashMap<String, PluginInfo>,
 }
 
 pub trait Plugin: Send + Sync + Any {
+    /// The `as_any` method allows for dynamic access to methods which
+    /// are not covered in the `Plugin` trait.
     fn as_any(&self) -> &dyn Any;
+
+    /// The name of the plugin. This is used to identify the plugin and
+    /// to associate it with the context.
     fn name(&self) -> String;
+
+    /// Executes a single function with the provided context.
+    ///
+    /// If the plugin has other methods, they can be accessed through
+    /// the `as_any` method.
     fn execute(&self, context: &dyn Any) -> Result<(), Box<dyn std::error::Error>>;
 }
 
@@ -25,15 +58,35 @@ impl PluginManager {
         }
     }
 
-    pub fn register_plugin(&mut self, plugin: Box<dyn Plugin>) {
-        log::debug!("Registering plugin: {:?}", plugin.name());
-        // println!("Registering plugin: {:?}", plugin.name());
+    /// Registers each plugin by the name returned by the plugin's `name` method.
+    /// It allows for plugins to be grouped together for easier management within
+    /// a single crated if there share similar traits.
+    pub fn register_plugin(&mut self, plugin: Box<dyn Plugin>, group: Option<String>) {
+        log::info!("Registering plugin: {:?}", plugin.name());
         let name = plugin.name().to_string();
-        self.plugins.insert(name, plugin);
+        let plugin_info = PluginInfo { plugin, group };
+        // check if the plugin is already registered
+        if self.plugins.contains_key(&name) {
+            let msg = format!("Plugin '{}' already registered", name);
+            log::error!("{msg}");
+            panic!("{msg}");
+            // return;
+        } else {
+            self.plugins.insert(name, plugin_info);
+        }
+    
     }
 
-    pub fn get_plugin(&self, name: &str) -> Option<&Box<dyn Plugin>> {
+    /// Gets the plugin with the given name.
+    pub fn get_plugin(&self, name: &str) -> Option<&PluginInfo> {
         self.plugins.get(name)
+    }
+
+    pub fn get_plugins_by_group(&self, group: &str) -> Vec<&PluginInfo> {
+        self.plugins
+            .values()
+            .filter(|plugin_info| plugin_info.group.as_deref() == Some(group))
+            .collect()
     }
 
     pub fn execute_plugin(
@@ -41,8 +94,8 @@ impl PluginManager {
         name: &str,
         context: &dyn Any,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(plugin) = self.get_plugin(name) {
-            plugin.execute(context)
+        if let Some(plugin_info) = self.get_plugin(name) {
+            plugin_info.plugin.execute(context)
         } else {
             let msg = format!("Plugin '{}' not found", name);
             log::error!("{msg}");
@@ -55,8 +108,8 @@ impl PluginManager {
     /// It allows you to safely access the plugin's fields and methods,
     /// not found in the `Plugin` trait.
     pub fn with_any<P: 'static>(&self, name: &str) -> Result<&P, Box<dyn std::error::Error>> {
-        if let Some(plugin) = self.get_plugin(name) {
-            match plugin.as_any().downcast_ref::<P>() {
+        if let Some(plugin_info) = self.get_plugin(name) {
+            match plugin_info.plugin.as_any().downcast_ref::<P>() {
                 Some(plugin) => Ok(plugin),
                 None => Err(format!("Failed to downcast plugin to type P: {}", name).into()),
             }
@@ -66,40 +119,39 @@ impl PluginManager {
     }
 
     /// Loops over the plugins and registers them to the plugin manager
-    fn register_plugins_vec(&mut self, plugins: Vec<Box<dyn Plugin>>) {
+    fn register_plugins_vec(&mut self, plugins: Vec<Box<dyn Plugin>>, group: Option<String>) {
         for plugin in plugins {
-            self.register_plugin(plugin);
+            self.register_plugin(plugin, group.clone());
         }
     }
+
     pub fn activate_plugins(mut self) -> Result<PluginManager, Box<dyn std::error::Error>> {
         let meta_data = self.get_plugin_metadata();
         log::debug!("Plugin metadata: {:?}", meta_data);
 
-        // Use ManuallyDrop to ensure the library isn't unloaded prematurely
-        match meta_data {
-            Metadata {
-                plugins: Some(path),
-            } => {
-                for (key, path) in path.as_object().unwrap() {
-                    log::debug!("loading plugin: {}", key);
-                    if path.is_object() {
-                        for (key, path) in path.as_object().unwrap() {
-                            log::debug!("loading plugin: {}", key);
-                            let (library, plugins) = self.load_plugin(path.as_str().unwrap())?;
-                            self.register_plugins_vec(plugins);
-                            let _library = ManuallyDrop::new(library);
-                        }
-                    } else {
-                        let (library, plugins) = self.load_plugin(path.as_str().unwrap())?;
-                        self.register_plugins_vec(plugins);
+        if let Some(plugin_config) = meta_data.plugins {
+            for (group_or_name, entry) in plugin_config {
+                match entry {
+                    PluginEntry::Individual(path) => {
+                        log::debug!("Loading individual plugin: {group_or_name} {path}");
+                        let (library, plugins) = self.load_plugin(&path)?;
+                        self.register_plugins_vec(plugins, None);
                         let _library = ManuallyDrop::new(library);
+                    }
+                    PluginEntry::Group(group_plugins) => {
+                        group_plugins.iter().for_each(|(name, path)| {
+                            log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
+                            let (library, plugins) = self.load_plugin(path).unwrap();
+                            self.register_plugins_vec(plugins, Some(group_or_name.clone()));
+                            let _library = ManuallyDrop::new(library);
+                        });
                     }
                 }
             }
-            Metadata { plugins: None } => {
-                log::error!("No plugin metadata found in manifest");
-                return Err(format!("No plugin metadata found in manifest").into());
-            }
+            // }
+        } else {
+            log::error!("No plugin metadata found in manifest");
+            return Err("No plugin metadata found in manifest".into());
         }
 
         Ok(self)
@@ -169,10 +221,6 @@ impl PluginManager {
         metadata
     }
 }
-#[derive(Deserialize, Debug)]
-pub struct Metadata {
-    pub plugins: Option<serde_json::Value>,
-}
 
 #[cfg(test)]
 mod tests {
@@ -189,27 +237,29 @@ mod tests {
         set_env_var();
         let plugin_manager = PluginManager::new();
         let metadata = plugin_manager.get_plugin_metadata();
-        let plugins = metadata.plugins.clone().unwrap();
-        assert_eq!(
-            plugins.get("plugin_a_path").unwrap(),
-            "../tests/target/release/libplugin_mods.so"
-        );
+        let plugins = metadata.plugins;
+        match plugins {
+            Some(plug_entry) => {
+                for (group, entry) in plug_entry {
+                    match entry {
+                        PluginEntry::Individual(path) => {
+                            assert_eq!(path, "../tests/target/release/libplugin_mods.so");
+                        }
+                        PluginEntry::Group(path) => {
+                            path.iter().for_each(|(metadata_name, path)| {
+                                assert_eq!(path, "../tests/target/release/libplugin_inventory.so");
+                                assert_eq!(metadata_name, "inventory_a");
+                                assert_eq!(group, "inventory");
+                            });
+                        }
+                    }
+                }
+            }
+            None => {
+                panic!("No plugins found in metadata");
+            }
+        }
     }
-
-    // #[test]
-    // fn get_plugin_inventory_test() {
-    //     set_env_var();
-    //     let metadata = get_plugin_path();
-    //     let plugins = metadata.plugins.clone().unwrap();
-    //     assert_eq!(
-    //         plugins
-    //             .get("inventory")
-    //             .unwrap()
-    //             .get("inventory_plugin")
-    //             .unwrap(),
-    //         "my_inventory_plugin"
-    //     );
-    // }
 
     #[test]
     fn activate_plugins_test() {
@@ -217,6 +267,17 @@ mod tests {
         let mut plugin_manager = PluginManager::new();
         plugin_manager = plugin_manager.activate_plugins().unwrap();
         assert!(plugin_manager.get_plugin("plugin_a").is_some());
+        assert_eq!(plugin_manager.plugins.len(), 3);
+    }
+
+    #[test]
+    #[should_panic]
+    /// Test for duplicate activation of plugins.
+    fn activate_plugins_and_panic_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManager::new();
+        plugin_manager = plugin_manager.activate_plugins().unwrap();
+        _ = plugin_manager.activate_plugins().unwrap();
     }
 
     #[test]
@@ -227,5 +288,39 @@ mod tests {
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
+    }
+
+    #[test]
+    fn load_plugin_and_panic_test() {
+        let plugin_manager = PluginManager::new();
+        let (_library, _) = plugin_manager
+            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .unwrap();
+        let (_library, plugins) = plugin_manager
+            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .unwrap();
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(plugins[0].name(), "plugin_a");
+    }
+
+    #[test]
+    fn activate_plugins_with_groups_test() {
+        set_env_var();
+        let plugin_manager = PluginManager::new().activate_plugins().unwrap();
+
+        // Check individual plugin
+        let plugin_a = plugin_manager.get_plugin("plugin_a").unwrap();
+        assert_eq!(plugin_a.group, None);
+
+        // Check grouped plugin
+        let inventory_plugin = plugin_manager.get_plugin("inventory_a").unwrap();
+        assert_eq!(inventory_plugin.group, Some("inventory".to_string()));
+
+        // Get all plugins in the "inventory" group
+        let inventory_plugins = plugin_manager.get_plugins_by_group("inventory");
+        assert_eq!(inventory_plugins.len(), 1);
+        assert_eq!(inventory_plugins[0].plugin.name(), "inventory_a");
+
+        assert_eq!(plugin_manager.plugins.len(), 3);
     }
 }

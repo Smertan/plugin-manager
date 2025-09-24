@@ -7,10 +7,10 @@ edition = "2024"
 plugin_manager = { path = "../../plugin_manager" }
 
 [package.metadata.plugins]
-plugin_a_path = "../tests/target/release/libplugin_mods.so"
+plugin_a_b = "../tests/target/release/libplugin_mods.so"
 
 [package.metadata.plugins.inventory]
-inventory_plugin = "../tests/target/release/libplugin_mods.so"
+inventory_a = "../tests/target/release/libplugin_inventory.so"
 
 
 [lib]

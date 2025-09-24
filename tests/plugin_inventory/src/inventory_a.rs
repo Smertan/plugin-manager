@@ -1,0 +1,25 @@
+use plugin_manager::Plugin;
+use std::any::Any;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InventoryA;
+
+impl Plugin for InventoryA {
+    fn name(&self) -> String {
+        String::from("inventory_a")
+    }
+
+    fn execute(&self, _context: &dyn Any) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Executing Inventory A");
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+impl InventoryA {
+    pub fn other_method(&self) {
+        println!("Executing other method in Inventory A");
+    }
+}

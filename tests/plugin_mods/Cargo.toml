@@ -6,9 +6,12 @@ edition = "2024"
 [dependencies]
 plugin_manager = { path = "../../plugin_manager" }
 
-[package.metadata]
-plugin_a_path = "/home/dre/projects/plugin_manager/target/release/libplugin_mods.so"
+[package.metadata.plugins]
+plugin_a_b = "../tests/target/release/libplugin_mods.so"
+
+[package.metadata.plugins.inventory]
+inventory_a = "../tests/target/release/libplugin_inventory.so"
+
 
 [lib]
 crate-type = ["lib", "cdylib"]
-# path = "plugin_mods/src/lib.rs"

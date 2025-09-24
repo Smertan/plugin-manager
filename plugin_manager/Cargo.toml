@@ -7,4 +7,5 @@ edition = "2024"
 libloading = "0.8.8"
 log = "0.4.28"
 serde = { version = "1.0.225", features = ["derive"] }
+serde_json = "1.0.145"
 toml = "0.9.6"

@@ -1,3 +1,101 @@
+//! # Plugin Manager
+//!
+//! A flexible and easy-to-use plugin management system for Rust applications.
+//!
+//! This module provides a `PluginManager` that allows dynamic loading, registration,
+//! and management of plugins at runtime. It supports individual plugins and grouped plugins,
+//! making it suitable for various application architectures.
+//!
+//! ## Features
+//!
+//! - Dynamic loading of plugins from shared object files (.so)
+//! - Support for individual and grouped plugins
+//! - Plugin registration and deregistration
+//! - Execution of plugin functionality
+//! - Metadata-driven plugin configuration
+//!
+//!
+//! ## Creating Plugins
+//!
+//! To create a plugin, implement the `Plugin` trait and export a `create_plugins` function:
+//!
+//! ```rust
+//! use plugin_manager::Plugin;
+//! use std::any::Any;
+//!
+//! #[derive(Debug)]
+//! struct MyPlugin;
+//!
+//! impl Plugin for MyPlugin {
+//!     fn name(&self) -> String {
+//!         "my_plugin".to_string()
+//!     }
+//!
+//!     fn execute(&self, _context: &dyn Any) -> Result<(), Box<dyn std::error::Error>> {
+//!         println!("Executing MyPlugin");
+//!         Ok(())
+//!     }
+//!
+//!     fn as_any(&self) -> &dyn Any {
+//!         self
+//!     }
+//! }
+//!
+//! #[unsafe(no_mangle)]
+//! pub fn create_plugins() -> Vec<Box<dyn Plugin>> {
+//!     vec![Box::new(MyPlugin)]
+//! }
+//! ```
+//!
+//!
+//! ## Plugin Configuration
+//!
+//! Plugins are configured in the `Cargo.toml` file of your project:
+//!
+//! ```toml
+//! [package.metadata.plugins]
+//! plugin_a = "/path/to/plugin_a.so"
+//!
+//! [package.metadata.plugins.group_name]
+//! plugin_b = "/path/to/plugin_b.so"
+//! plugin_c = "/path/to/plugin_c.so"
+//! ```
+//!
+//! ## Usage
+//!
+//! Here's a basic example of how to use the `PluginManager`:
+//!
+//! ```rust
+//! # unsafe {
+//! #     std::env::set_var("CARGO_MANIFEST_PATH", "../tests/plugin_mods/Cargo.toml");
+//! # }
+//! use plugin_manager::PluginManager;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create a new PluginManager
+//!     let mut manager = PluginManager::new();
+//!
+//!     // Activate plugins based on metadata in Cargo.toml
+//!     manager = manager.activate_plugins()?;
+//!
+//!     // Execute a specific plugin
+//!     manager.execute_plugin("plugin_a", &())?;
+//!
+//!     // Deregister a plugin
+//!     manager.deregister_plugin("plugin_b");
+//!
+//!     // Deregister all plugins
+//!     let deregistered = manager.deregister_all_plugins();
+//!     println!("Deregistered plugins: {:?}", deregistered);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//!
+//! This module provides a robust foundation for building plugin-based architectures
+//! in Rust applications, offering flexibility and ease of use.
+
 use libloading::{Library, Symbol};
 use log;
 use serde::Deserialize;
@@ -74,7 +172,24 @@ impl PluginManager {
         } else {
             self.plugins.insert(name, plugin_info);
         }
-    
+    }
+
+    /// Deregisters the plugin with the given name.
+    pub fn deregister_plugin(&mut self, name: &str) -> Option<String> {
+        log::info!("De-registering plugin: {}", name);
+        let plugin = self.plugins.remove(name);
+        match plugin {
+            None => None,
+            Some(plugin_info) => Some(plugin_info.plugin.name()),
+        }
+    }
+
+    pub fn deregister_all_plugins(&mut self) -> Vec<String> {
+        let names: Vec<String> = self.plugins.drain().map(|(name, _)| name).collect();
+        names.iter().for_each(|name| {
+            log::info!("De-registered plugin: {}", name);
+        });
+        names
     }
 
     /// Gets the plugin with the given name.
@@ -88,6 +203,21 @@ impl PluginManager {
             .filter(|plugin_info| plugin_info.group.as_deref() == Some(group))
             .collect()
     }
+
+    /// Gets all the **names** of the registered plugins.
+    pub fn get_all_plugin_names(&self) -> Vec<&String> {
+        self.plugins.keys().collect()
+    }
+
+    /// Gets all the **names** and **groups** of the registered plugins.
+    pub fn get_all_plugin_names_and_groups(&self) -> Vec<(String, Option<String>)> {
+        self.plugins
+            .iter()
+            .map(|(name, plugin_info)| (name.clone(), plugin_info.group.clone()))
+            .collect()
+    }
+
+    // TODO: Load plugins programmatically
 
     pub fn execute_plugin(
         &self,
@@ -148,7 +278,6 @@ impl PluginManager {
                     }
                 }
             }
-            // }
         } else {
             log::error!("No plugin metadata found in manifest");
             return Err("No plugin metadata found in manifest".into());
@@ -322,5 +451,58 @@ mod tests {
         assert_eq!(inventory_plugins[0].plugin.name(), "inventory_a");
 
         assert_eq!(plugin_manager.plugins.len(), 3);
+    }
+
+    #[test]
+    fn get_all_plugin_names_and_groups_test() {
+        set_env_var();
+        let plugin_manager = PluginManager::new().activate_plugins().unwrap();
+        let all_plugins = plugin_manager.get_all_plugin_names_and_groups();
+        assert_eq!(all_plugins.len(), 3);
+        all_plugins
+            .iter()
+            .for_each(|(name, group)| match name.as_str() {
+                "plugin_a" => assert_eq!(group.as_deref(), None),
+                "plugin_b" => assert_eq!(group.as_deref(), None),
+                "inventory_a" => assert_eq!(group.as_deref(), Some("inventory")),
+                _ => panic!("Unexpected plugin name"),
+            });
+    }
+
+    #[test]
+    fn deregister_plugin_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManager::new().activate_plugins().unwrap();
+        assert_eq!(plugin_manager.plugins.len(), 3);
+
+        // Deregister individual plugin
+        let plugin_name = plugin_manager.deregister_plugin("plugin_a");
+        if let Some(plugin) = plugin_name {
+            assert_eq!(plugin, "plugin_a");
+            assert_eq!(plugin_manager.plugins.len(), 2);
+        }
+
+        // Deregister grouped plugin
+        let plugin_name = plugin_manager.deregister_plugin("inventory_a");
+        if let Some(plugin) = plugin_name {
+            assert_eq!(plugin, "inventory_a");
+            assert_eq!(plugin_manager.plugins.len(), 1);
+        }
+
+        // Deregister non-existent plugin
+        let plugin_name = plugin_manager.deregister_plugin("non_existent_plugin");
+        assert_eq!(plugin_name, None);
+    }
+
+    #[test]
+    fn deregister_all_plugins_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManager::new().activate_plugins().unwrap();
+        assert_eq!(plugin_manager.plugins.len(), 3);
+
+        // Deregister all plugins
+        let num_plugins_deregistered = plugin_manager.deregister_all_plugins();
+        assert_eq!(num_plugins_deregistered.len(), 3);
+        assert_eq!(plugin_manager.plugins.len(), 0);
     }
 }

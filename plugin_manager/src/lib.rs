@@ -104,19 +104,22 @@ use log;
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::HashMap;
+// use std::ffi::{OsStr, OsString};
+use std::io::{Error, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
 
 type PathString = String;
+type GroupOrName = String;
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
-    pub plugins: Option<HashMap<String, PluginEntry>>,
+    pub plugins: Option<HashMap<GroupOrName, PluginEntry>>,
 }
 
 /// Information about a plugin entry. This can either be a single plugin
 /// or a group of plugins.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum PluginEntry {
     Individual(PathString),
@@ -130,8 +133,11 @@ pub struct PluginInfo {
 }
 
 /// Manages the lifecycle of loaded plugins.
+
 pub struct PluginManager {
     pub plugins: HashMap<String, PluginInfo>,
+    // plugin_path: Vec<String>
+    plugin_path: Vec<HashMap<GroupOrName, PluginEntry>>,
 }
 
 pub trait Plugin: Send + Sync + Any {
@@ -156,7 +162,56 @@ impl PluginManager {
     pub fn new() -> Self {
         PluginManager {
             plugins: HashMap::new(),
+            plugin_path: Vec::new(),
+            // plugin_path: Vec::from(HashMap::new()),
         }
+    }
+
+    pub fn activate_plugins(mut self) -> Result<PluginManager, Box<dyn std::error::Error>> {
+        let meta_data = self.get_plugin_metadata();
+        log::debug!("Plugin metadata: {:?}", meta_data);
+        let mut registrations = Vec::new();
+        if let Some(plugin_config) = meta_data.plugins {
+            for (group_or_name, plugin_entry) in plugin_config {
+                registrations.push((group_or_name, plugin_entry));
+                // _ = &self.activation_registration(group_or_name, &plugin_entry);
+            }
+        } else {
+            log::error!("No plugin metadata found in manifest");
+            return Err("No plugin metadata found in manifest".into());
+        }
+        // let plugin_path: &Vec<HashMap<GroupOrName, PluginEntry>> = self.plugin_path.clone_from_slice("plugin_path".as_ref());
+        if !self.plugin_path.is_empty() {
+            for entry in &self.plugin_path {
+                for (group_or_name, plugin_entry) in entry {
+                    registrations.push((group_or_name.clone(), plugin_entry.clone()));
+                }
+            }
+        }
+        for (group_or_name, plugin_entry) in registrations {
+            _ = self.activation_registration(group_or_name.clone(), &plugin_entry)?;
+        }
+        Ok(self)
+    }
+
+    fn activation_registration(&mut self, group_or_name: String, plugin_entry: &PluginEntry) -> Result<(), Box<dyn std::error::Error>> {
+        match plugin_entry {
+            PluginEntry::Individual(path) => {
+                log::debug!("Loading individual plugin: {group_or_name} {path}");
+                let (library, plugins) = self.load_plugin(&path)?;
+                self.register_plugins_vec(plugins, None);
+                let _library = ManuallyDrop::new(library);
+            }
+            PluginEntry::Group(group_plugins) => {
+                group_plugins.iter().for_each(|(name, path)| {
+                    log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
+                    let (library, plugins) = self.load_plugin(path).unwrap();
+                    self.register_plugins_vec(plugins, Some(group_or_name.clone()));
+                    let _library = ManuallyDrop::new(library);
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Registers each plugin by the name returned by the plugin's `name` method.
@@ -166,12 +221,11 @@ impl PluginManager {
         log::info!("Registering plugin: {:?}", plugin.name());
         let name = plugin.name().to_string();
         let plugin_info = PluginInfo { plugin, group };
-        // check if the plugin is already registered
+
         if self.plugins.contains_key(&name) {
             let msg = format!("Plugin '{}' already registered", name);
             log::error!("{msg}");
             panic!("{msg}");
-            // return;
         } else {
             self.plugins.insert(name, plugin_info);
         }
@@ -181,6 +235,7 @@ impl PluginManager {
     pub fn deregister_plugin(&mut self, name: &str) -> Option<String> {
         log::info!("De-registering plugin: {}", name);
         let plugin = self.plugins.remove(name);
+
         match plugin {
             None => None,
             Some(plugin_info) => Some(plugin_info.plugin.name()),
@@ -194,63 +249,6 @@ impl PluginManager {
         });
         names
     }
-
-    /// Gets the plugin with the given name.
-    pub fn get_plugin(&self, name: &str) -> Option<&PluginInfo> {
-        self.plugins.get(name)
-    }
-
-    pub fn get_plugins_by_group(&self, group: &str) -> Vec<&PluginInfo> {
-        self.plugins
-            .values()
-            .filter(|plugin_info| plugin_info.group.as_deref() == Some(group))
-            .collect()
-    }
-
-    /// Gets all the **names** of the registered plugins.
-    pub fn get_all_plugin_names(&self) -> Vec<&String> {
-        self.plugins.keys().collect()
-    }
-
-    /// Gets all the **names** and **groups** of the registered plugins.
-    pub fn get_all_plugin_names_and_groups(&self) -> Vec<(String, Option<String>)> {
-        self.plugins
-            .iter()
-            .map(|(name, plugin_info)| (name.clone(), plugin_info.group.clone()))
-            .collect()
-    }
-
-    // TODO: Load plugins programmatically
-
-    pub fn execute_plugin(
-        &self,
-        name: &str,
-        context: &dyn Any,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(plugin_info) = self.get_plugin(name) {
-            plugin_info.plugin.execute(context)
-        } else {
-            let msg = format!("Plugin '{}' not found", name);
-            log::error!("{msg}");
-            Err(msg.into())
-        }
-    }
-
-    /// Utility method to downcast a plugin to a specific type
-    ///
-    /// It allows you to safely access the plugin's fields and methods,
-    /// not found in the `Plugin` trait.
-    pub fn with_any<P: 'static>(&self, name: &str) -> Result<&P, Box<dyn std::error::Error>> {
-        if let Some(plugin_info) = self.get_plugin(name) {
-            match plugin_info.plugin.as_any().downcast_ref::<P>() {
-                Some(plugin) => Ok(plugin),
-                None => Err(format!("Failed to downcast plugin to type P: {}", name).into()),
-            }
-        } else {
-            Err(format!("Plugin '{}' not found", name).into())
-        }
-    }
-
     /// Loops over the plugins and registers them to the plugin manager
     fn register_plugins_vec(&mut self, plugins: Vec<Box<dyn Plugin>>, group: Option<String>) {
         for plugin in plugins {
@@ -258,36 +256,6 @@ impl PluginManager {
         }
     }
 
-    pub fn activate_plugins(mut self) -> Result<PluginManager, Box<dyn std::error::Error>> {
-        let meta_data = self.get_plugin_metadata();
-        log::debug!("Plugin metadata: {:?}", meta_data);
-
-        if let Some(plugin_config) = meta_data.plugins {
-            for (group_or_name, entry) in plugin_config {
-                match entry {
-                    PluginEntry::Individual(path) => {
-                        log::debug!("Loading individual plugin: {group_or_name} {path}");
-                        let (library, plugins) = self.load_plugin(&path)?;
-                        self.register_plugins_vec(plugins, None);
-                        let _library = ManuallyDrop::new(library);
-                    }
-                    PluginEntry::Group(group_plugins) => {
-                        group_plugins.iter().for_each(|(name, path)| {
-                            log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
-                            let (library, plugins) = self.load_plugin(path).unwrap();
-                            self.register_plugins_vec(plugins, Some(group_or_name.clone()));
-                            let _library = ManuallyDrop::new(library);
-                        });
-                    }
-                }
-            }
-        } else {
-            log::error!("No plugin metadata found in manifest");
-            return Err("No plugin metadata found in manifest".into());
-        }
-
-        Ok(self)
-    }
 
     /// Loads a plugin from a shared object file and registers it to the plugin manager.
     pub fn load_plugin(
@@ -295,6 +263,7 @@ impl PluginManager {
         filename: &str,
     ) -> Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>> {
         let path = Path::new(filename);
+
         if !path.exists() {
             let msg = format!("Plugin file does not exist: {}", filename);
             log::error!("{msg}");
@@ -351,6 +320,104 @@ impl PluginManager {
             Metadata { plugins: None }
         };
         metadata
+    }
+
+    // TODO: Load plugins programmatically
+    pub fn with_path(mut self, path: &str, group: Option<&str>) -> Result<Self, Error> {
+        let path = Path::new(&path);
+        if path.exists() {
+            let path_string = if let Some(path_str) = path.to_str() {
+                path_str.to_string()
+            } else {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Path contains invalid Unicode",
+                ));
+            };
+            if group.is_some() {
+                if let Some(group_string) = group {
+                    let group_info = HashMap::from([(
+                        group_string.to_string(),
+                        PluginEntry::Group(
+                            HashMap::from([(
+                                path_string, group_string.to_string()
+                            )])
+                        )
+                    )]);
+                    self.plugin_path.push(group_info);
+                        // self.plugin_path.push(PluginEntry::Group(HashMap::from([(
+                        //     group_string.to_string(),
+                        //     path_string,
+                        // )])));
+                };
+            } else {
+                todo!()
+                // let individual_info = HashMapPluginEntry::Individual(path_string);
+                // self.plugin_path.push(PluginEntry::Individual(path_string));
+            }
+            Ok(self)
+        } else {
+            // return Error::new(ErrorKind::NotFound, format!("FileNotFoundError: {}", path))
+            return Err(Error::new(
+                ErrorKind::NotFound,
+                format!("FileNotFoundError: {:?}", path.as_os_str()),
+            ));
+        }
+        // Ok(self)
+    }
+
+    /// Gets the plugin with the given name.
+    pub fn get_plugin(&self, name: &str) -> Option<&PluginInfo> {
+        self.plugins.get(name)
+    }
+
+    pub fn get_plugins_by_group(&self, group: &str) -> Vec<&PluginInfo> {
+        self.plugins
+            .values()
+            .filter(|plugin_info| plugin_info.group.as_deref() == Some(group))
+            .collect()
+    }
+
+    /// Gets all the **names** of the registered plugins.
+    pub fn get_all_plugin_names(&self) -> Vec<&String> {
+        self.plugins.keys().collect()
+    }
+
+    /// Gets all the **names** and **groups** of the registered plugins.
+    pub fn get_all_plugin_names_and_groups(&self) -> Vec<(String, Option<String>)> {
+        self.plugins
+            .iter()
+            .map(|(name, plugin_info)| (name.clone(), plugin_info.group.clone()))
+            .collect()
+    }
+
+    pub fn execute_plugin(
+        &self,
+        name: &str,
+        context: &dyn Any,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(plugin_info) = self.get_plugin(name) {
+            plugin_info.plugin.execute(context)
+        } else {
+            let msg = format!("Plugin '{}' not found", name);
+            log::error!("{msg}");
+            Err(msg.into())
+        }
+    }
+
+    /// Utility method to downcast a plugin to a specific type
+    ///
+    /// It allows you to safely access the plugin's fields and methods,
+    /// not found in the `Plugin` trait.
+    pub fn with_any<P: 'static>(&self, name: &str) -> Result<&P, Box<dyn std::error::Error>> {
+        if let Some(plugin_info) = self.get_plugin(name) {
+            match plugin_info.plugin.as_any().downcast_ref::<P>() {
+                Some(plugin) => Ok(plugin),
+                None => Err(format!("Failed to downcast plugin to type P: {}", name).into()),
+            }
+        } else {
+            Err(format!("Plugin '{}' not found", name).into())
+        }
     }
 }
 

@@ -19,6 +19,9 @@
 //!
 //! To create a plugin, implement the `Plugin` trait and export a `create_plugins` function:
 //!
+//! The `as_any` method is required to allow access to the methods not
+//! mentioned in the `Plugin` trait, and needs to be set up to return self.
+//!
 //! ```rust
 //! use plugin_manager::Plugin;
 //! use std::any::Any;
@@ -73,19 +76,19 @@
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a new PluginManager
-//!     let mut manager = PluginManager::new();
+//!     let mut plugin_manager = PluginManager::new();
 //!
 //!     // Activate plugins based on metadata in Cargo.toml
-//!     manager = manager.activate_plugins()?;
+//!     plugin_manager = plugin_manager.activate_plugins()?;
 //!
 //!     // Execute a specific plugin
-//!     manager.execute_plugin("plugin_a", &())?;
+//!     plugin_manager.execute_plugin("plugin_a", &())?;
 //!
 //!     // Deregister a plugin
-//!     manager.deregister_plugin("plugin_b");
+//!     plugin_manager.deregister_plugin("plugin_b");
 //!
 //!     // Deregister all plugins
-//!     let deregistered = manager.deregister_all_plugins();
+//!     let deregistered = plugin_manager.deregister_all_plugins();
 //!     println!("Deregistered plugins: {:?}", deregistered);
 //!
 //!     Ok(())

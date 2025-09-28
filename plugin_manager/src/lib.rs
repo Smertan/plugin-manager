@@ -50,10 +50,127 @@
 //! }
 //! ```
 //!
+//! ## Setting up Cargo.toml for Plugins
+//!
+//! When creating a plugin, you need to set up your `Cargo.toml` file correctly:
+//!
+//! 1. Add the `plugin_manager` as a dependency:
+//!
+//! ```toml
+//! [dependencies]
+//! plugin_manager = "0.1.0"
+//! ```
+//!
+//! 2. Configure the library to be both a Rust library and a dynamic library:
+//!
+//! ```toml
+//! [lib]
+//! name = "your_plugin_name"
+//! crate-type = ["lib", "cdylib"]
+//! ```
+//!
+//! This configuration allows your plugin to be compiled as both a Rust library
+//! and a dynamic library, which is necessary for the PluginManager to load it at runtime.
+//!
+//! ## Building the Plugin
+//!
+//! To build your plugin for use with the main project:
+//!
+//! 1. Navigate to your plugin's directory.
+//! 2. Run the following command to build the plugin as a dynamic library:
+//!
+//!    ```bash
+//!    cargo build --release
+//!    ```
+//!
+//! 3. The compiled dynamic library will be in the `target/release` directory with a name like
+//!    `libyour_plugin_name.so` (on Linux), `libyour_plugin_name.dylib` (on macOS),
+//!    or `your_plugin_name.dll` (on Windows).
+//!
+//! ## Differences between Cargo.toml Files
+//!
+//! Both the main project using plugins and the individual plugin projects are end users of the plugin_manager.
+//!
+//! 1. Main Project Cargo.toml:
+//!    - Located in the root of the project that will use plugins.
+//!    - Includes `plugin_manager` as a dependency.
+//!    - Does not need the `crate-type` specification.
+//!    - Does not contain any metadata for plugin configuration.
+//!    - The loaded plugins are dependant on the plugins specified in the `End-User's` project Cargo.toml.
+//!
+//!    Example:
+//!    ```toml
+//!    [package]
+//!    name = "main_project"
+//!    version = "0.1.0"
+//!    edition = "2024"
+//!
+//!    [dependencies]
+//!    plugin_manager = "0.1.0"
+//!    ```
+//!
+//! 2. Plugin Project Cargo.toml:
+//!    - Located in a separate project directory for each plugin.
+//!    - Includes `plugin_manager` as a dependency.
+//!    - Specifies `crate-type = ["lib", "cdylib"]` to build as both a Rust library and a dynamic library.
+//!    - Does not contain plugin metadata configuration.
+//!
+//!    Example:
+//!    ```toml
+//!    [package]
+//!    name = "my_plugin"
+//!    version = "0.1.0"
+//!    edition = "2024"
+//!
+//!    [dependencies]
+//!    plugin_manager = "0.1.0"
+//!
+//!    [lib]
+//!    name = "my_plugin"
+//!    crate-type = ["lib", "cdylib"]
+//!    ```
+//!
+//! 3. End-User Project Cargo.toml:
+//!    - Includes the main project as dependencies.
+//!    - Contains metadata for plugin configuration.
+//!
+//!    Example:
+//!    ```toml
+//!    [package]
+//!    name = "my_application"
+//!    version = "0.1.0"
+//!    edition = "2024"
+//!
+//!    [dependencies]
+//!    main_project = "0.1.0"
+//!
+//!    [package.metadata.plugins]
+//!    my_plugin = "/path/to/libmy_plugin.so"
+//!    ```
+//!
+//! The main difference is that the plugin project's Cargo.toml file is set up to produce a dynamic
+//! library that can be loaded at runtime by the main project. The End-User project's Cargo.toml includes
+//! metadata for configuring which plugins to load and how to group them.
+//!
+//! The main differences between these Cargo.toml files are:
+//!
+//! 1. The Main Project Cargo.toml sets up the core project that will use plugins:
+//!    - It includes the plugin_manager as a dependency.
+//!    - It doesn't specify crate-type or contain plugin metadata.
+//!    - The plugins it can load are determined by the End-User's project configuration.
+//!
+//! 2. The Plugin Project Cargo.toml configures individual plugin projects:
+//!    - It includes the plugin_manager as a dependency.
+//!    - It specifies crate-type as both "lib" and "cdylib" to produce a dynamic library.
+//!    - It doesn't contain any plugin metadata configuration.
+//!
+//! 3. The End-User Project Cargo.toml configures the application that will use the main project and its plugins:
+//!    - It includes the main project (not the plugin_manager directly) as a dependency.
+//!    - It contains the metadata for plugin configuration, specifying which plugins to load and how to group them.
 //!
 //! ## Plugin Configuration
 //!
-//! Plugins are configured in the `Cargo.toml` file of your project:
+//! Plugins are configured in the `Cargo.toml` file of the end-user project:
 //!
 //! ```toml
 //! [package.metadata.plugins]
@@ -194,7 +311,11 @@ impl PluginManager {
         Ok(self)
     }
 
-    fn activation_registration(&mut self, group_or_name: String, plugin_entry: &PluginEntry) -> Result<(), Box<dyn std::error::Error>> {
+    fn activation_registration(
+        &mut self,
+        group_or_name: String,
+        plugin_entry: &PluginEntry,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match plugin_entry {
             PluginEntry::Individual(path) => {
                 log::debug!("Loading individual plugin: {group_or_name} {path}");
@@ -255,7 +376,6 @@ impl PluginManager {
             self.register_plugin(plugin, group.clone());
         }
     }
-
 
     /// Loads a plugin from a shared object file and registers it to the plugin manager.
     pub fn load_plugin(
@@ -338,17 +458,16 @@ impl PluginManager {
                 if let Some(group_string) = group {
                     let group_info = HashMap::from([(
                         group_string.to_string(),
-                        PluginEntry::Group(
-                            HashMap::from([(
-                                path_string, group_string.to_string()
-                            )])
-                        )
+                        PluginEntry::Group(HashMap::from([(
+                            path_string,
+                            group_string.to_string(),
+                        )])),
                     )]);
                     self.plugin_path.push(group_info);
-                        // self.plugin_path.push(PluginEntry::Group(HashMap::from([(
-                        //     group_string.to_string(),
-                        //     path_string,
-                        // )])));
+                    // self.plugin_path.push(PluginEntry::Group(HashMap::from([(
+                    //     group_string.to_string(),
+                    //     path_string,
+                    // )])));
                 };
             } else {
                 todo!()

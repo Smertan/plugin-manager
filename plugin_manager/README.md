@@ -1,12 +1,17 @@
 # Plugin Manager
 
-A flexible and easy-to-use plugin management system for Rust applications.
+![Crates.io Version](https://img.shields.io/crates/v/plugin-manager)
+![GitHub License](https://img.shields.io/github/license/Smertan/plugin-manager)
 
-The `PluginManager` library allows dynamic loading, registration, and management of plugins at runtime. It supports individual plugins and grouped plugins, making it suitable for various application architectures.
+
+A flexible and easy-to-use plugin management system for Rust applications. It provides a robust foundation for building plugin-based architectures
+in Rust applications.
+
+The `Plugin Manager` library allows dynamic loading, registration, and management of plugins at runtime. It supports individual plugins and grouped plugins, making it suitable for various application architectures.
 
 ## Features
 
-- Dynamic loading of plugins from shared object files (.so (Linux), .dll (Windows), .dylib (MacOS))
+- Dynamic loading of plugins from shared object files (`.so` *Linux*, `.dll` *Windows*, `.dylib` *MacOS*)
 - Support for individual and grouped plugins
 - Plugin registration and deregistration
 - Execution of plugin functionality
@@ -21,10 +26,9 @@ The package can either be installed via `cargo add` or the `Cargo.toml` file.
 ```sh
 cargo add plugin-manager
 ```
+or
 
 **Cargo.toml file**
-
-Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -39,20 +43,25 @@ mentioned in the `Plugin` trait, and needs to be set up to return self.
 ```rust
 use plugin_manager::Plugin;
 use std::any::Any;
+
 #[derive(Debug)]
 struct MyPlugin;
+
 impl Plugin for MyPlugin {
     fn name(&self) -> String {
         "my_plugin".to_string()
     }
+
     fn execute(&self, _context: &dyn Any) -> Result<(), Box<dyn std::error::Error>> {
         println!("Executing MyPlugin");
         Ok(())
     }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
+
 #[unsafe(no_mangle)]
 pub fn create_plugins() -> Vec<Box<dyn Plugin>> {
     vec![Box::new(MyPlugin)]
@@ -114,6 +123,7 @@ Both the main project using plugins and the individual plugin projects are end u
    name = "main_project"
    version = "0.1.0"
    edition = "2024"
+
    [dependencies]
    plugin_manager = "0.1.0"
    ```
@@ -161,9 +171,6 @@ Both the main project using plugins and the individual plugin projects are end u
    my_plugin = "/path/to/libmy_plugin.so"
    ```
 
-The main difference is that the plugin project's Cargo.toml file is set up to produce a dynamic
-library that can be loaded at runtime by the main project. The End-User project's Cargo.toml includes
-metadata for configuring which plugins to load and how to group them.
 
 The main differences between these Cargo.toml files are:
 
@@ -222,5 +229,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-This module provides a robust foundation for building plugin-based architectures
-in Rust applications, offering flexibility and ease of use.
+## License
+
+This project is licensed under the Apache License, Version 2.0 - see the LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

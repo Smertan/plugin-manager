@@ -78,6 +78,7 @@ jobs:
         run: |
           echo "Contents of tests directory:"
           ls -l tests/
+          ls -l target/
 
       - name: Print tests directory (Windows)
         if: runner.os == 'Windows'

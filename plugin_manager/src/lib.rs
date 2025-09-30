@@ -202,7 +202,8 @@
 //!     plugin_manager.execute_plugin("plugin_a", &())?;
 //!
 //!     // Deregister a plugin
-//!     plugin_manager.deregister_plugin("plugin_b");
+//!     let deregistered = plugin_manager.deregister_plugin("plugin_b");
+//!     print!("Deregistered plugin: {:?}", deregistered);
 //!
 //!     // Deregister all plugins
 //!     let deregistered = plugin_manager.deregister_all_plugins();
@@ -694,4 +695,8 @@ mod tests {
         assert_eq!(num_plugins_deregistered.len(), 3);
         assert_eq!(plugin_manager.plugins.len(), 0);
     }
+
+    // TODO: write a test for PluginManager::execute_plugin
+    // TODO: write a test for PluginManager::get_plugin_metadata
+    // TODO: write a test for PluginManager::get_plugins_by_group
 }

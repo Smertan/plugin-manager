@@ -77,7 +77,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           echo "Contents of tests directory:"
-          ls -l tests/plugin-manager/.cargo/
+          ls -l tests/plugin_inventory/.cargo/
           ls -l target/release/
 
       - name: Print tests directory (Windows)

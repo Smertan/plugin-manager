@@ -1,7 +1,16 @@
 [package]
-name = "plugin_manager"
+name = "plugin-manager"
 version = "0.1.0"
 edition = "2024"
+authors = ["Andre Bowen-Brown <contact@genja.co.uk>"]
+description = "A flexible and easy-to-use plugin management system for Rust applications"
+license = "Apache-2.0"
+homepage = "https://github.com/smertan/plugin-manager"
+repository = "https://github.com/smertan/plugin-manager"
+documentation = "https://docs.rs/plugin-manager"
+readme = "README.md"
+keywords = ["plugin", "manager", "dynamic", "loading"]
+categories = ["development-tools", "rust-patterns"]
 
 [dependencies]
 libloading = "0.8.8"
@@ -9,3 +18,5 @@ log = "0.4.28"
 serde = { version = "1.0.225", features = ["derive"] }
 serde_json = "1.0.145"
 toml = "0.9.6"
+
+

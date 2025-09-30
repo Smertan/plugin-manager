@@ -59,14 +59,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
-name = "plugin_inventory"
-version = "0.1.0"
-dependencies = [
- "plugin_manager",
-]
-
-[[package]]
-name = "plugin_manager"
+name = "plugin-manager"
 version = "0.1.0"
 dependencies = [
  "libloading",
@@ -77,10 +70,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_inventory"
+version = "0.1.0"
+dependencies = [
+ "plugin-manager",
+]
+
+[[package]]
 name = "plugin_mods"
 version = "0.1.0"
 dependencies = [
- "plugin_manager",
+ "plugin-manager",
+]
+
+[[package]]
+name = "plugin_tasks"
+version = "0.1.0"
+dependencies = [
+ "plugin-manager",
 ]
 
 [[package]]

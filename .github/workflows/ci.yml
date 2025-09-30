@@ -72,6 +72,18 @@ jobs:
         with:
           command: build
           args: --release
+
+      - name: Print tests directory (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Contents of tests directory:"
+          ls -l tests/target/release/
+
+      - name: Print tests directory (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "Contents of tests directory:"
+          dir /s tests/target/release/
     
       - name: Run cargo test
         uses: actions-rs/cargo@v1

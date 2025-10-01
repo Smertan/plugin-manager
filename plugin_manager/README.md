@@ -2,6 +2,7 @@
 
 ![Crates.io Version](https://img.shields.io/crates/v/plugin-manager)
 ![GitHub License](https://img.shields.io/github/license/Smertan/plugin-manager)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Smertan/plugin-manager/ci.yml)
 
 
 A flexible and easy-to-use plugin management system for Rust applications. It provides a robust foundation for building plugin-based architectures

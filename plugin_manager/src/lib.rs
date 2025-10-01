@@ -546,10 +546,24 @@ mod tests {
     use super::*;
 
     fn set_env_var() {
+        let file_name = match std::env::consts::OS {
+            "linux" => "Cargo.toml",
+            "windows" => "Cargo-windows.toml",
+            "macos" => "Cargo-macos.toml",
+            _ => "Cargo.toml",
+
+        };
+        let file = format!("../tests/plugin_mods/{}", file_name);
         unsafe {
-            std::env::set_var("CARGO_MANIFEST_PATH", "../tests/plugin_mods/Cargo.toml");
+            std::env::set_var("CARGO_MANIFEST_PATH", file);
         }
     }
+
+    fn add_file_extension(file_name: &str) -> String {
+        let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
+        path_name
+    }
+
 
     #[test]
     fn get_plugin_path_test() {
@@ -562,11 +576,11 @@ mod tests {
                 for (group, entry) in plug_entry {
                     match entry {
                         PluginEntry::Individual(path) => {
-                            assert_eq!(path, "../target/release/libplugin_mods.so");
+                            assert_eq!(path, add_file_extension("../target/release/libplugin_mods"));
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
-                                assert_eq!(path, "../target/release/libplugin_inventory.so");
+                                assert_eq!(path, &add_file_extension("../target/release/libplugin_inventory"));
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
                             });
@@ -603,7 +617,7 @@ mod tests {
     fn load_plugin_test() {
         let plugin_manager = PluginManager::new();
         let (_library, plugins) = plugin_manager
-            .load_plugin("../target/release/libplugin_mods.so")
+            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
@@ -613,10 +627,10 @@ mod tests {
     fn load_plugin_and_panic_test() {
         let plugin_manager = PluginManager::new();
         let (_library, _) = plugin_manager
-            .load_plugin("../target/release/libplugin_mods.so")
+            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
             .unwrap();
         let (_library, plugins) = plugin_manager
-            .load_plugin("../target/release/libplugin_mods.so")
+            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");

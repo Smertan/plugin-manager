@@ -562,11 +562,11 @@ mod tests {
                 for (group, entry) in plug_entry {
                     match entry {
                         PluginEntry::Individual(path) => {
-                            assert_eq!(path, "../tests/target/release/libplugin_mods.so");
+                            assert_eq!(path, "../target/release/libplugin_mods.so");
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
-                                assert_eq!(path, "../tests/target/release/libplugin_inventory.so");
+                                assert_eq!(path, "../target/release/libplugin_inventory.so");
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
                             });
@@ -603,7 +603,7 @@ mod tests {
     fn load_plugin_test() {
         let plugin_manager = PluginManager::new();
         let (_library, plugins) = plugin_manager
-            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .load_plugin("../target/release/libplugin_mods.so")
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
@@ -613,10 +613,10 @@ mod tests {
     fn load_plugin_and_panic_test() {
         let plugin_manager = PluginManager::new();
         let (_library, _) = plugin_manager
-            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .load_plugin("../target/release/libplugin_mods.so")
             .unwrap();
         let (_library, plugins) = plugin_manager
-            .load_plugin("../tests/target/release/libplugin_mods.so")
+            .load_plugin("../target/release/libplugin_mods.so")
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");

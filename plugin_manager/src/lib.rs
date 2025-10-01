@@ -218,17 +218,16 @@
 //! in Rust applications, offering flexibility and ease of use.
 
 use libloading::{Library, Symbol};
-use log;
 use serde::Deserialize;
 use std::any::Any;
-use std::collections::HashMap;
-// use std::ffi::{OsStr, OsString};
+use std::collections::{HashMap, hash_map};
 use std::io::{Error, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
 
 type PathString = String;
 type GroupOrName = String;
+type PluginResult = Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>>;
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
@@ -251,7 +250,6 @@ pub struct PluginInfo {
 }
 
 /// Manages the lifecycle of loaded plugins.
-
 pub struct PluginManager {
     pub plugins: HashMap<String, PluginInfo>,
     // plugin_path: Vec<String>
@@ -275,6 +273,12 @@ pub trait Plugin: Send + Sync + Any {
 }
 
 type PluginCreate = unsafe fn() -> Vec<Box<dyn Plugin>>;
+
+impl Default for PluginManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl PluginManager {
     pub fn new() -> Self {
@@ -307,7 +311,7 @@ impl PluginManager {
             }
         }
         for (group_or_name, plugin_entry) in registrations {
-            _ = self.activation_registration(group_or_name.clone(), &plugin_entry)?;
+            self.activation_registration(group_or_name.clone(), &plugin_entry)?;
         }
         Ok(self)
     }
@@ -320,7 +324,7 @@ impl PluginManager {
         match plugin_entry {
             PluginEntry::Individual(path) => {
                 log::debug!("Loading individual plugin: {group_or_name} {path}");
-                let (library, plugins) = self.load_plugin(&path)?;
+                let (library, plugins) = self.load_plugin(path)?;
                 self.register_plugins_vec(plugins, None);
                 let _library = ManuallyDrop::new(library);
             }
@@ -344,14 +348,23 @@ impl PluginManager {
         let name = plugin.name().to_string();
         let plugin_info = PluginInfo { plugin, group };
 
-        if self.plugins.contains_key(&name) {
-            let msg = format!("Plugin '{}' already registered", name);
+        if let hash_map::Entry::Vacant(entry) = self.plugins.entry(name.clone()) {
+            entry.insert(plugin_info);
+        } else {
+            let msg = format!("Plugin '{}' already registered", &name);
             log::error!("{msg}");
             panic!("{msg}");
-        } else {
-            self.plugins.insert(name, plugin_info);
         }
     }
+
+    //     if self.plugins.contains_key(&name) {
+    //         let msg = format!("Plugin '{}' already registered", name);
+    //         log::error!("{msg}");
+    //         panic!("{msg}");
+    //     } else {
+    //         self.plugins.insert(name, plugin_info);
+    //     }
+    // }
 
     /// Deregisters the plugin with the given name.
     pub fn deregister_plugin(&mut self, name: &str) -> Option<String> {
@@ -382,7 +395,7 @@ impl PluginManager {
     pub fn load_plugin(
         &self,
         filename: &str,
-    ) -> Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>> {
+    ) -> PluginResult {
         let path = Path::new(filename);
 
         if !path.exists() {
@@ -478,10 +491,10 @@ impl PluginManager {
             Ok(self)
         } else {
             // return Error::new(ErrorKind::NotFound, format!("FileNotFoundError: {}", path))
-            return Err(Error::new(
+            Err(Error::new(
                 ErrorKind::NotFound,
                 format!("FileNotFoundError: {:?}", path.as_os_str()),
-            ));
+            ))
         }
         // Ok(self)
     }
@@ -551,7 +564,6 @@ mod tests {
             "windows" => "Cargo-windows.toml",
             "macos" => "Cargo-macos.toml",
             _ => "Cargo.toml",
-
         };
         let file = format!("../tests/plugin_mods/{}", file_name);
         unsafe {
@@ -564,7 +576,6 @@ mod tests {
         path_name
     }
 
-
     #[test]
     fn get_plugin_path_test() {
         set_env_var();
@@ -576,11 +587,17 @@ mod tests {
                 for (group, entry) in plug_entry {
                     match entry {
                         PluginEntry::Individual(path) => {
-                            assert_eq!(path, add_file_extension("../target/release/libplugin_mods"));
+                            assert_eq!(
+                                path,
+                                add_file_extension("../target/release/libplugin_mods")
+                            );
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
-                                assert_eq!(path, &add_file_extension("../target/release/libplugin_inventory"));
+                                assert_eq!(
+                                    path,
+                                    &add_file_extension("../target/release/libplugin_inventory")
+                                );
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
                             });

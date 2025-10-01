@@ -80,11 +80,11 @@ jobs:
           ls -l tests/plugin_inventory/.cargo/
           ls -l target/release/
 
-      - name: Print tests directory (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          echo "Contents of tests directory:"
-          dir /s tests/target/release/
+      # - name: Print tests directory (Windows)
+      #   if: runner.os == 'Windows'
+      #   run: |
+      #     echo "Contents of tests directory:"
+      #     dir /s tests/target/release/
     
       - name: Run cargo test
         uses: actions-rs/cargo@v1

@@ -553,7 +553,7 @@ impl PluginManager {
 
 #[cfg(test)]
 mod tests {
-    use path_slash::PathBufExt;
+    // use path_slash::PathBufExt;
     use std::path::PathBuf;
 
     use super::*;
@@ -599,10 +599,10 @@ mod tests {
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
-                                let path_str = PathBuf::from_slash(path);
+                                // let path_str = PathBuf::from_slash(path);
                                 assert_eq!(
-                                    path_str.to_slash().unwrap().to_string(),
-                                    make_file_path("plugin_inventory")
+                                    path,
+                                    &make_file_path("plugin_inventory")
                                 );
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");

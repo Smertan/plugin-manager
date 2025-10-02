@@ -573,9 +573,12 @@ mod tests {
 
     fn add_file_extension(file_name: &str) -> String {
         let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
-        let path_s = PathBuf::from_backslash(&path_name);
+        let path_slash = PathBuf::from_slash(&path_name);
         // Path::
-        let path_slash = path_s.to_slash().unwrap().to_string();
+        let path_slash = match std::env::consts::OS {
+            "windows" => path_slash.into_os_string().into_string().unwrap(),
+            _ => path_slash.to_slash().unwrap().to_string(),
+        };
         path_slash
     }
 
@@ -638,9 +641,7 @@ mod tests {
     fn load_plugin_test() {
         let plugin_manager = PluginManager::new();
         let filename = add_file_extension("../target/release/libplugin_mods");
-        let (_library, plugins) = plugin_manager
-            .load_plugin(&filename)
-            .unwrap();
+        let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
     }
@@ -649,13 +650,9 @@ mod tests {
     fn load_plugin_and_panic_test() {
         let plugin_manager = PluginManager::new();
         let filename = add_file_extension("../target/release/libplugin_mods");
-        let (_library, _) = plugin_manager
-            .load_plugin(&filename)
-            .unwrap();
+        let (_library, _) = plugin_manager.load_plugin(&filename).unwrap();
         let filename = add_file_extension("../target/release/libplugin_mods");
-        let (_library, plugins) = plugin_manager
-            .load_plugin(&filename)
-            .unwrap();
+        let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
     }

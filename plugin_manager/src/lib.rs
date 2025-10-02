@@ -571,15 +571,25 @@ mod tests {
         }
     }
 
-    fn add_file_extension(file_name: &str) -> String {
-        let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
-        let path_slash = PathBuf::from_slash(&path_name);
-        // Path::
-        let path_slash = match std::env::consts::OS {
-            "windows" => path_slash.into_os_string().into_string().unwrap(),
-            _ => path_slash.to_slash().unwrap().to_string(),
-        };
-        path_slash
+    fn make_file_path(module_name: &str) -> String {
+        // let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
+        let mut path_name = PathBuf::new();
+        let mut module_name_prefix = String::from(std::env::consts::DLL_PREFIX);
+        module_name_prefix.push_str(module_name);
+        path_name.push("..");
+        path_name.push("target");
+        path_name.push("release");
+        path_name.push(module_name_prefix);
+        path_name.set_extension(std::env::consts::DLL_EXTENSION);
+
+        // path_name.push(module_name);
+        // let mut path_name = PathBuf::from_slash(path_str);
+        // let current_filename = path_name.file_name().unwrap();
+        // let mut new_filename = String::from(std::env::consts::DLL_PREFIX);
+        // new_filename.push_str(current_filename.to_str().unwrap());
+        // path_name.set_file_name(new_filename);
+        // path_name.set_extension(std::env::consts::DLL_EXTENSION);
+        path_name.to_string_lossy().to_string()
     }
 
     #[test]
@@ -593,17 +603,14 @@ mod tests {
                 for (group, entry) in plug_entry {
                     match entry {
                         PluginEntry::Individual(path) => {
-                            assert_eq!(
-                                path,
-                                add_file_extension("../target/release/libplugin_mods")
-                            );
+                            assert_eq!(path, make_file_path("plugin_mods"));
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
                                 let path_str = PathBuf::from_slash(path);
                                 assert_eq!(
                                     path_str.to_slash().unwrap().to_string(),
-                                    add_file_extension("../target/release/libplugin_inventory")
+                                    make_file_path("plugin_inventory")
                                 );
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
@@ -640,7 +647,7 @@ mod tests {
     #[test]
     fn load_plugin_test() {
         let plugin_manager = PluginManager::new();
-        let filename = add_file_extension("../target/release/libplugin_mods");
+        let filename = make_file_path("plugin_mods");
         let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
@@ -649,9 +656,9 @@ mod tests {
     #[test]
     fn load_plugin_and_panic_test() {
         let plugin_manager = PluginManager::new();
-        let filename = add_file_extension("../target/release/libplugin_mods");
+        let filename = make_file_path("plugin_mods");
         let (_library, _) = plugin_manager.load_plugin(&filename).unwrap();
-        let filename = add_file_extension("../target/release/libplugin_mods");
+        let filename = make_file_path("plugin_mods");
         let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");

@@ -600,10 +600,7 @@ mod tests {
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
                                 // let path_str = PathBuf::from_slash(path);
-                                assert_eq!(
-                                    path,
-                                    &make_file_path("plugin_inventory")
-                                );
+                                assert_eq!(path, &make_file_path("plugin_inventory"));
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
                             });

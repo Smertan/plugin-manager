@@ -392,10 +392,7 @@ impl PluginManager {
     }
 
     /// Loads a plugin from a shared object file and registers it to the plugin manager.
-    pub fn load_plugin(
-        &self,
-        filename: &str,
-    ) -> PluginResult {
+    pub fn load_plugin(&self, filename: &str) -> PluginResult {
         let path = Path::new(filename);
 
         if !path.exists() {
@@ -456,7 +453,6 @@ impl PluginManager {
         metadata
     }
 
-    // TODO: Load plugins programmatically
     pub fn with_path(mut self, path: &str, group: Option<&str>) -> Result<Self, Error> {
         let path = Path::new(&path);
         if path.exists() {
@@ -556,6 +552,10 @@ impl PluginManager {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    // use path_slash::PathExt as _;
+    use path_slash::PathBufExt;
+
     use super::*;
 
     fn set_env_var() {
@@ -573,7 +573,10 @@ mod tests {
 
     fn add_file_extension(file_name: &str) -> String {
         let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
-        path_name
+        let path_s = PathBuf::from_backslash(&path_name);
+        // Path::
+        let path_slash = path_s.to_slash().unwrap().to_string();
+        path_slash
     }
 
     #[test]
@@ -594,9 +597,10 @@ mod tests {
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
+                                let path_str = PathBuf::from_slash(path);
                                 assert_eq!(
-                                    path,
-                                    &add_file_extension("../target/release/libplugin_inventory")
+                                    path_str.to_slash().unwrap().to_string(),
+                                    add_file_extension("../target/release/libplugin_inventory")
                                 );
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");
@@ -633,8 +637,9 @@ mod tests {
     #[test]
     fn load_plugin_test() {
         let plugin_manager = PluginManager::new();
+        let filename = add_file_extension("../target/release/libplugin_mods");
         let (_library, plugins) = plugin_manager
-            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
+            .load_plugin(&filename)
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");
@@ -643,11 +648,13 @@ mod tests {
     #[test]
     fn load_plugin_and_panic_test() {
         let plugin_manager = PluginManager::new();
+        let filename = add_file_extension("../target/release/libplugin_mods");
         let (_library, _) = plugin_manager
-            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
+            .load_plugin(&filename)
             .unwrap();
+        let filename = add_file_extension("../target/release/libplugin_mods");
         let (_library, plugins) = plugin_manager
-            .load_plugin(&add_file_extension("../target/release/libplugin_mods"))
+            .load_plugin(&filename)
             .unwrap();
         assert_eq!(plugins.len(), 2);
         assert_eq!(plugins[0].name(), "plugin_a");

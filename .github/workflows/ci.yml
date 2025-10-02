@@ -84,7 +84,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           echo "Contents of tests directory:"
-          dir /S target/release/
+          ls -l target/release/
     
       - name: Run cargo test
         uses: actions-rs/cargo@v1

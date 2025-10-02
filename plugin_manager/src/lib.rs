@@ -148,10 +148,6 @@
 //!    my_plugin = "/path/to/libmy_plugin.so"
 //!    ```
 //!
-//! The main difference is that the plugin project's Cargo.toml file is set up to produce a dynamic
-//! library that can be loaded at runtime by the main project. The End-User project's Cargo.toml includes
-//! metadata for configuring which plugins to load and how to group them.
-//!
 //! The main differences between these Cargo.toml files are:
 //!
 //! 1. The Main Project Cargo.toml sets up the core project that will use plugins:
@@ -285,7 +281,6 @@ impl PluginManager {
         PluginManager {
             plugins: HashMap::new(),
             plugin_path: Vec::new(),
-            // plugin_path: Vec::from(HashMap::new()),
         }
     }
 
@@ -296,13 +291,11 @@ impl PluginManager {
         if let Some(plugin_config) = meta_data.plugins {
             for (group_or_name, plugin_entry) in plugin_config {
                 registrations.push((group_or_name, plugin_entry));
-                // _ = &self.activation_registration(group_or_name, &plugin_entry);
             }
         } else {
             log::error!("No plugin metadata found in manifest");
             return Err("No plugin metadata found in manifest".into());
         }
-        // let plugin_path: &Vec<HashMap<GroupOrName, PluginEntry>> = self.plugin_path.clone_from_slice("plugin_path".as_ref());
         if !self.plugin_path.is_empty() {
             for entry in &self.plugin_path {
                 for (group_or_name, plugin_entry) in entry {
@@ -356,15 +349,6 @@ impl PluginManager {
             panic!("{msg}");
         }
     }
-
-    //     if self.plugins.contains_key(&name) {
-    //         let msg = format!("Plugin '{}' already registered", name);
-    //         log::error!("{msg}");
-    //         panic!("{msg}");
-    //     } else {
-    //         self.plugins.insert(name, plugin_info);
-    //     }
-    // }
 
     /// Deregisters the plugin with the given name.
     pub fn deregister_plugin(&mut self, name: &str) -> Option<String> {
@@ -465,35 +449,25 @@ impl PluginManager {
                     "Path contains invalid Unicode",
                 ));
             };
-            if group.is_some() {
-                if let Some(group_string) = group {
-                    let group_info = HashMap::from([(
-                        group_string.to_string(),
-                        PluginEntry::Group(HashMap::from([(
-                            path_string,
-                            group_string.to_string(),
-                        )])),
-                    )]);
-                    self.plugin_path.push(group_info);
-                    // self.plugin_path.push(PluginEntry::Group(HashMap::from([(
-                    //     group_string.to_string(),
-                    //     path_string,
-                    // )])));
-                };
+            if let Some(group_string) = group {
+                let group_info = HashMap::from([(
+                    group_string.to_string(),
+                    PluginEntry::Group(HashMap::from([(path_string, group_string.to_string())])),
+                )]);
+                self.plugin_path.push(group_info);
             } else {
                 todo!()
-                // let individual_info = HashMapPluginEntry::Individual(path_string);
+                // TODO: implement individual plugin registration
+                // let individual_info = PluginEntry::Individual(path_string);
                 // self.plugin_path.push(PluginEntry::Individual(path_string));
-            }
+            };
             Ok(self)
         } else {
-            // return Error::new(ErrorKind::NotFound, format!("FileNotFoundError: {}", path))
             Err(Error::new(
                 ErrorKind::NotFound,
                 format!("FileNotFoundError: {:?}", path.as_os_str()),
             ))
         }
-        // Ok(self)
     }
 
     /// Gets the plugin with the given name.
@@ -553,7 +527,6 @@ impl PluginManager {
 
 #[cfg(test)]
 mod tests {
-    // use path_slash::PathBufExt;
     use std::path::PathBuf;
 
     use super::*;
@@ -572,7 +545,6 @@ mod tests {
     }
 
     fn make_file_path(module_name: &str) -> String {
-        // let path_name = format!("{file_name}{}", std::env::consts::DLL_SUFFIX);
         let mut path_name = PathBuf::new();
         let mut module_name_prefix = String::from(std::env::consts::DLL_PREFIX);
         module_name_prefix.push_str(module_name);
@@ -599,7 +571,6 @@ mod tests {
                         }
                         PluginEntry::Group(path) => {
                             path.iter().for_each(|(metadata_name, path)| {
-                                // let path_str = PathBuf::from_slash(path);
                                 assert_eq!(path, &make_file_path("plugin_inventory"));
                                 assert_eq!(metadata_name, "inventory_a");
                                 assert_eq!(group, "inventory");

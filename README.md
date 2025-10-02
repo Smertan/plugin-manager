@@ -172,7 +172,6 @@ Both the main project using plugins and the individual plugin projects are end u
    my_plugin = "/path/to/libmy_plugin.so"
    ```
 
-
 The main differences between these Cargo.toml files are:
 
 1. The Main Project Cargo.toml sets up the core project that will use plugins:

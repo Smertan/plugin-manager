@@ -439,7 +439,8 @@ impl PluginManager {
             }
         };
         let value: toml::Value = toml::from_str(&manifest).unwrap();
-        let metadata = if let Some(meta_data) = value
+        // let metadata = if let Some(meta_data) = value
+        if let Some(meta_data) = value
             .get("package")
             .and_then(|p| p.get("metadata"))
             .and_then(|m| m.as_table())
@@ -449,8 +450,8 @@ impl PluginManager {
             meta.unwrap()
         } else {
             Metadata { plugins: None }
-        };
-        metadata
+        }
+        // metadata
     }
 
     pub fn with_path(mut self, path: &str, group: Option<&str>) -> Result<Self, Error> {
@@ -552,9 +553,8 @@ impl PluginManager {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    // use path_slash::PathExt as _;
     use path_slash::PathBufExt;
+    use std::path::PathBuf;
 
     use super::*;
 
@@ -581,14 +581,6 @@ mod tests {
         path_name.push("release");
         path_name.push(module_name_prefix);
         path_name.set_extension(std::env::consts::DLL_EXTENSION);
-
-        // path_name.push(module_name);
-        // let mut path_name = PathBuf::from_slash(path_str);
-        // let current_filename = path_name.file_name().unwrap();
-        // let mut new_filename = String::from(std::env::consts::DLL_PREFIX);
-        // new_filename.push_str(current_filename.to_str().unwrap());
-        // path_name.set_file_name(new_filename);
-        // path_name.set_extension(std::env::consts::DLL_EXTENSION);
         path_name.to_string_lossy().to_string()
     }
 

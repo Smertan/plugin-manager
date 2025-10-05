@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-plugin-manager = { path = "../../plugin_manager" }
+# plugin-manager = { path = "../../plugin_manager" }
+plugin-types = { path = "../../plugin_types" }
 
 [lib]
 name = "plugin_tasks"

@@ -1,5 +1,5 @@
 pub mod task_a;
-use plugin_manager::Plugin;
+use plugin_types::Plugin;
 
 #[unsafe(no_mangle)]
 pub fn create_plugins() -> Vec<Box<dyn Plugin>> {

@@ -214,26 +214,184 @@
 //! in Rust applications, offering flexibility and ease of use.
 mod plugin_structs;
 use libloading::{Library, Symbol};
+use plugin_structs::{PluginCreate as PluginCreateNew, PluginResult as PluginResultNew, Plugins};
+use plugin_types::{GroupOrName, Plugin, PluginCreate, PluginEntry, PluginInfo, PluginResult};
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
 use std::io::{Error, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
-use plugin_types::{
-    GroupOrName, PluginCreate, PluginEntry, PluginResult, Plugin, PluginInfo
-};
-use plugin_structs::InventoryPlugins;
 
-pub enum PluginGroups {
-    Base,
-    Inventory(InventoryPlugins),
-}
+// pub enum Plugins {
+//     Base,
+//     Inventory(InventoryPlugins),
+// }
 
+// impl Plugins {
+//     pub fn name(&self) -> String {
+//         match self {
+//             Plugins::Base => String::from("Base"),
+//             Plugins::Inventory(inventory) => inventory.name(),
+//         }
+//     }
+
+// }
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
     pub plugins: Option<HashMap<GroupOrName, PluginEntry>>,
+}
+
+pub struct PluginManagerNew {
+    pub plugins: HashMap<String, Plugins>,
+    plugin_path: Vec<HashMap<GroupOrName, PluginEntry>>,
+}
+
+impl PluginManagerNew {
+    pub fn new() -> Self {
+        PluginManagerNew {
+            plugins: HashMap::new(),
+            plugin_path: Vec::new(),
+        }
+    }
+
+    pub fn activate_plugins(mut self) -> Result<PluginManagerNew, Box<dyn std::error::Error>> {
+        let meta_data = self.get_plugin_metadata();
+        log::debug!("Plugin metadata: {:?}", meta_data);
+        let mut registrations = Vec::new();
+        if let Some(plugin_config) = meta_data.plugins {
+            for (group_or_name, plugin_entry) in plugin_config {
+                registrations.push((group_or_name, plugin_entry));
+            }
+        } else {
+            log::error!("No plugin metadata found in manifest");
+            return Err("No plugin metadata found in manifest".into());
+        }
+        if !self.plugin_path.is_empty() {
+            for entry in &self.plugin_path {
+                for (group_or_name, plugin_entry) in entry {
+                    registrations.push((group_or_name.clone(), plugin_entry.clone()));
+                }
+            }
+        }
+        for (group_or_name, plugin_entry) in registrations {
+            self.activation_registration(group_or_name.clone(), &plugin_entry)?;
+        }
+        Ok(self)
+    }
+
+    pub fn get_plugin_metadata(&self) -> Metadata {
+        let plugin_a_path =
+            std::env::var("CARGO_MANIFEST_PATH").unwrap_or_else(|_| ".".to_string());
+
+        let file_string = std::fs::read_to_string(plugin_a_path);
+        let manifest = match file_string {
+            Ok(manifest) => manifest,
+            Err(msg) => {
+                eprintln!("Error reading manifest file {}", msg);
+                return Metadata { plugins: None };
+            }
+        };
+        let value: toml::Value = toml::from_str(&manifest).unwrap();
+        // let metadata = if let Some(meta_data) = value
+        if let Some(meta_data) = value
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.as_table())
+        {
+            let meta: Result<Metadata, toml::de::Error> =
+                toml::from_str(&toml::to_string(meta_data).unwrap());
+            meta.unwrap()
+        } else {
+            Metadata { plugins: None }
+        }
+        // metadata
+    }
+
+    fn activation_registration(
+        &mut self,
+        group_or_name: String,
+        plugin_entry: &PluginEntry,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match plugin_entry {
+            PluginEntry::Individual(path) => {
+                log::debug!("Loading individual plugin: {group_or_name} {path}");
+                let (library, plugins) = self.load_plugin(path)?;
+                for plugin in plugins {
+                    match plugin {
+                        Plugins::Base => {
+                            self.register_plugin(Plugins::Base);
+                        }
+                        _ => (),
+                    }
+                    // self.register_plugins_vec(plugins, None);
+                }
+                let _library = ManuallyDrop::new(library);
+            }
+            PluginEntry::Group(group_plugins) => {
+                group_plugins.iter().for_each(|(name, path)| {
+                    // TODO: Implement a match PluginGroups
+
+                    log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
+                    let (library, plugins) = self.load_plugin(path).unwrap();
+
+                    for plugin in plugins {
+                        match plugin {
+                            Plugins::Base => {
+                                // self.register_plugin(Plugins::Base);
+                                ()
+                            }
+                            Plugins::Inventory(inventory) => {
+                                self.register_plugin(Plugins::Inventory(inventory));
+                            }
+                        }
+                        // self.plugins.get_mut(&format!("{group_or_name}::{name}")).unwrap().register_plugin(plugin);
+                    }
+
+                    // self.register_plugins_vec(plugins, Some(group_or_name.clone()));
+                    let _library = ManuallyDrop::new(library);
+                });
+            }
+        }
+        Ok(())
+    }
+
+    pub fn load_plugin(&self, filename: &str) -> PluginResultNew {
+        let path = Path::new(filename);
+
+        if !path.exists() {
+            let msg = format!("Plugin file does not exist: {}", filename);
+            log::error!("{msg}");
+            return Err(msg.into());
+        } else {
+            log::debug!("Attempting to load plugin: {}", filename);
+        }
+
+        let library = unsafe { Library::new(path)? };
+        log::debug!("Library loaded successfully");
+
+        let create_plugin: Symbol<PluginCreateNew> = unsafe { library.get(b"create_plugins")? };
+        log::debug!("Found create_plugins symbol");
+
+        let plugins = unsafe { create_plugin() };
+        log::debug!("Plugin created successfully");
+
+        Ok((library, plugins))
+    }
+
+    pub fn register_plugin(&mut self, plugin: Plugins) {
+        log::info!("Registering plugin: {:?}", plugin.name());
+        let name = plugin.name().to_string();
+
+        if let hash_map::Entry::Vacant(entry) = self.plugins.entry(name.clone()) {
+            entry.insert(plugin);
+        } else {
+            let msg = format!("Plugin '{}' already registered", &name);
+            log::error!("{msg}");
+            panic!("{msg}");
+        }
+    }
 }
 
 pub struct PluginManager {
@@ -672,9 +830,16 @@ mod tests {
         assert_eq!(plugin_manager.plugins.len(), 0);
     }
 
+    #[test]
+    fn plugin_manager_new_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManagerNew::new();
+        assert_eq!(plugin_manager.plugins.len(), 0);
+        plugin_manager = plugin_manager.activate_plugins().unwrap();
+        assert_eq!(plugin_manager.plugins.len(), 3);
+    }
     // #[test]
     // fn with_any_test() {
-     
 
     //     let plugin_manager = PluginManager::new().activate_plugins().unwrap();
     //     let plugin_a = plugin_manager.get_plugin("plugin_a");

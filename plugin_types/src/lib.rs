@@ -6,8 +6,7 @@ use std::collections::HashMap;
 pub type PathString = String;
 pub type GroupOrName = String;
 pub type PluginResult = Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>>;
-pub type PluginCreate = unsafe fn() -> Vec<Box<dyn Plugin>>; 
-
+pub type PluginCreate = unsafe fn() -> Vec<Box<dyn Plugin>>;
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -43,4 +42,9 @@ pub trait Plugin: Send + Sync + Any {
     /// If the plugin has other methods, they can be accessed through
     /// the `as_any` method.
     fn execute(&self, context: &dyn Any) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+pub trait PluginInventory: Plugin {
+    // loads the inventory
+    fn load(&self);
 }

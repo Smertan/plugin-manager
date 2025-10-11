@@ -212,7 +212,7 @@
 //!
 //! This module provides a robust foundation for building plugin-based architectures
 //! in Rust applications, offering flexibility and ease of use.
-
+mod plugin_structs;
 use libloading::{Library, Symbol};
 use serde::Deserialize;
 use std::any::Any;
@@ -220,54 +220,24 @@ use std::collections::{HashMap, hash_map};
 use std::io::{Error, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
-use plugin_types::{GroupOrName, PluginCreate, PluginEntry, PluginResult, Plugin, PluginInfo};
+use plugin_types::{
+    GroupOrName, PluginCreate, PluginEntry, PluginResult, Plugin, PluginInfo
+};
+use plugin_structs::InventoryPlugins;
 
-// type PathString = String;
-// type GroupOrName = String;
-// type PluginResult = Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>>;
-// type PluginCreate = unsafe fn() -> Vec<Box<dyn Plugin>>;
+pub enum PluginGroups {
+    Base,
+    Inventory(InventoryPlugins),
+}
+
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
     pub plugins: Option<HashMap<GroupOrName, PluginEntry>>,
 }
 
-// /// Information about a plugin entry. This can either be a single plugin
-// /// or a group of plugins.
-// #[derive(Deserialize, Debug, Clone)]
-// #[serde(untagged)]
-// pub enum PluginEntry {
-//     Individual(PathString),
-//     Group(HashMap<String, PathString>),
-// }
-
-// /// Information about a loaded plugin, including the plugin itself and its group.
-// pub struct PluginInfo {
-//     pub plugin: Box<dyn Plugin>,
-//     pub group: Option<String>,
-// }
-
-// /// Manages the lifecycle of loaded plugins.
-
-// pub trait Plugin: Send + Sync + Any {
-//     /// The `as_any` method allows for dynamic access to methods which
-//     /// are not covered in the `Plugin` trait.
-//     fn as_any(&self) -> &dyn Any;
-
-//     /// The name of the plugin. This is used to identify the plugin and
-//     /// to associate it with the context.
-//     fn name(&self) -> String;
-
-//     /// Executes a single function with the provided context.
-//     ///
-//     /// If the plugin has other methods, they can be accessed through
-//     /// the `as_any` method.
-//     fn execute(&self, context: &dyn Any) -> Result<(), Box<dyn std::error::Error>>;
-// }
-
 pub struct PluginManager {
     pub plugins: HashMap<String, PluginInfo>,
-    // plugin_path: Vec<String>
     plugin_path: Vec<HashMap<GroupOrName, PluginEntry>>,
 }
 
@@ -324,6 +294,8 @@ impl PluginManager {
             }
             PluginEntry::Group(group_plugins) => {
                 group_plugins.iter().for_each(|(name, path)| {
+                    // TODO: Implement a match PluginGroups
+
                     log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
                     let (library, plugins) = self.load_plugin(path).unwrap();
                     self.register_plugins_vec(plugins, Some(group_or_name.clone()));
@@ -510,26 +482,26 @@ impl PluginManager {
         }
     }
 
-    /// Utility method to downcast a plugin to a specific type
-    ///
-    /// It allows you to safely access the plugin's fields and methods,
-    /// not found in the `Plugin` trait.
-    pub fn with_any<P: 'static>(&self, name: &str) -> Result<&P, Box<dyn std::error::Error>> {
-        if let Some(plugin_info) = self.get_plugin(name) {
-            match plugin_info.plugin.as_any().downcast_ref::<P>() {
-                Some(plugin) => Ok(plugin),
-                None => Err(format!("Failed to downcast plugin to type P: {}", name).into()),
-            }
-        } else {
-            Err(format!("Plugin '{}' not found", name).into())
-        }
-    }
+    // /// Utility method to downcast a plugin to a specific type
+    // ///
+    // /// It allows you to safely access the plugin's fields and methods,
+    // /// not found in the `Plugin` trait.
+    // pub fn with_any<P: 'static>(&self, name: &str) -> Result<&P, Box<dyn std::error::Error>> {
+    //     if let Some(plugin_info) = self.get_plugin(name) {
+    //         match plugin_info.plugin.as_any().downcast_ref::<P>() {
+    //             Some(plugin) => Ok(plugin),
+    //             None => Err(format!("Failed to downcast plugin to type P: {}", name).into()),
+    //         }
+    //     } else {
+    //         Err(format!("Plugin '{}' not found", name).into())
+    //     }
+    // }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use plugin_mods::plugin_a::PluginA;
+    // use plugin_mods::plugin_a::PluginA;
 
     use super::*;
 
@@ -700,29 +672,29 @@ mod tests {
         assert_eq!(plugin_manager.plugins.len(), 0);
     }
 
-    #[test]
-    fn with_any_test() {
+    // #[test]
+    // fn with_any_test() {
      
 
-        let plugin_manager = PluginManager::new().activate_plugins().unwrap();
-        let plugin_a = plugin_manager.get_plugin("plugin_a");
-        let plugina =  match plugin_a {
-            Some(plugin_info) => {
-                let as_is = plugin_info.plugin.as_any().downcast_ref::<PluginA>();
-                assert_eq!(
-                    as_is.unwrap().name(),
-                    "plugin_a",
-                    "PluginManager::as_any() should return a reference to PluginA"
-                );
-                // :<PluginA>("plugin_a");
-                as_is.unwrap().other_method();
-                as_is
-            },
-            None => panic!("Plugin 'plugin_a' not found"),
-        };
-        // :<PluginA>("plugin_a");
-        assert_eq!(plugin_manager.plugins.len(), 3);
-    }
+    //     let plugin_manager = PluginManager::new().activate_plugins().unwrap();
+    //     let plugin_a = plugin_manager.get_plugin("plugin_a");
+    //     let plugina =  match plugin_a {
+    //         Some(plugin_info) => {
+    //             let as_is = plugin_info.plugin.as_any().downcast_ref::<PluginA>();
+    //             assert_eq!(
+    //                 as_is.unwrap().name(),
+    //                 "plugin_a",
+    //                 "PluginManager::as_any() should return a reference to PluginA"
+    //             );
+    //             // :<PluginA>("plugin_a");
+    //             as_is.unwrap().other_method();
+    //             as_is
+    //         },
+    //         None => panic!("Plugin 'plugin_a' not found"),
+    //     };
+    //     // :<PluginA>("plugin_a");
+    //     assert_eq!(plugin_manager.plugins.len(), 3);
+    // }
     // TODO: write a test for PluginManager::execute_plugin
     // TODO: write a test for PluginManager::get_plugin_metadata
     // TODO: write a test for PluginManager::get_plugins_by_group

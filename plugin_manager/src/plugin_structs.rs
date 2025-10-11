@@ -1,5 +1,5 @@
 use libloading::Library;
-use plugin_types::{Plugin, PluginInventory};
+use plugin_types::{Plugin, PluginInventory, Plugins};
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
 use std::error::Error;
@@ -7,21 +7,14 @@ use std::error::Error;
 pub type PluginCreate = unsafe fn() -> Vec<Plugins>;
 pub type PluginResult = Result<(Library, Vec<Plugins>), Box<dyn std::error::Error>>;
 
-pub enum Plugins {
-    Base,
-    Inventory(InventoryPlugins),
-}
-
-impl Plugins {
-    pub fn name(&self) -> String {
-        match self {
-            Plugins::Base => String::from("Base"),
-            Plugins::Inventory(inventory) => inventory.name(),
-        }
-    }
-}
 pub struct InventoryPlugins {
     plugins: HashMap<String, Box<dyn PluginInventory>>,
+}
+
+impl Default for InventoryPlugins {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InventoryPlugins {
@@ -42,6 +35,7 @@ impl InventoryPlugins {
         // self.plugins.push(plugin);
     }
 
+    #[allow(clippy::borrowed_box)]
     pub fn get_plugin(&self, name: &str) -> Option<&Box<dyn PluginInventory>> {
         self.plugins.get(name)
     }
@@ -57,6 +51,7 @@ impl InventoryPlugins {
 
 impl PluginInventory for InventoryPlugins {
     fn load(&self) {
+        println!("Executing load method in InventoryPlugins");
         // Load inventory plugins from a file or database
     }
 }

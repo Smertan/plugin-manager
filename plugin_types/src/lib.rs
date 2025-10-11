@@ -48,3 +48,18 @@ pub trait PluginInventory: Plugin {
     // loads the inventory
     fn load(&self);
 }
+
+// #[derive(Debug, Clone)]
+pub enum Plugins {
+    Base(Box<dyn Plugin>),
+    Inventory(Box<dyn PluginInventory>),
+}
+
+impl Plugins {
+    pub fn name(&self) -> String {
+        match self {
+            Plugins::Base(base) => base.name(),
+            Plugins::Inventory(inventory) => inventory.name(),
+        }
+    }
+}

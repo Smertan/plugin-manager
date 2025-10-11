@@ -1,4 +1,4 @@
-use plugin_types::Plugin;
+use plugin_types::{Plugin, PluginInventory};
 use std::any::Any;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,8 +18,8 @@ impl Plugin for InventoryA {
         self
     }
 }
-impl InventoryA {
-    pub fn other_method(&self) {
+impl PluginInventory for InventoryA {
+    fn load(&self) {
         println!("Executing other method in Inventory A");
     }
 }

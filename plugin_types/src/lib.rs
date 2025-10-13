@@ -62,4 +62,11 @@ impl Plugins {
             Plugins::Inventory(inventory) => inventory.name(),
         }
     }
+
+    pub fn group_name(&self) -> String {
+        match self {
+            Plugins::Base(_) => String::from("Base"),
+            Plugins::Inventory(_) => String::from("Inventory"),
+        }
+    }
 }

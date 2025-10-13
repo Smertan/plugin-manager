@@ -187,31 +187,32 @@
 //! # }
 //! use plugin_manager::PluginManager;
 //!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create a new PluginManager
-//!     let mut plugin_manager = PluginManager::new();
+//! # fn doc_test() -> Result<(), Box<dyn std::error::Error>> {
+//! // Create a new PluginManager
+//! let mut plugin_manager = PluginManager::new();
 //!
-//!     // Activate plugins based on metadata in Cargo.toml
-//!     plugin_manager = plugin_manager.activate_plugins()?;
+//! // Activate plugins based on metadata in Cargo.toml
+//! plugin_manager = plugin_manager.activate_plugins()?;
 //!
-//!     // Execute a specific plugin
-//!     plugin_manager.execute_plugin("plugin_a", &())?;
+//! // Execute a specific plugin
+//! plugin_manager.execute_plugin("plugin_a", &())?;
 //!
-//!     // Deregister a plugin
-//!     let deregistered = plugin_manager.deregister_plugin("plugin_b");
-//!     print!("Deregistered plugin: {:?}", deregistered);
+//! // Deregister a plugin
+//! let deregistered = plugin_manager.deregister_plugin("plugin_b");
+//! print!("Deregistered plugin: {:?}", deregistered);
 //!
-//!     // Deregister all plugins
-//!     let deregistered = plugin_manager.deregister_all_plugins();
-//!     println!("Deregistered plugins: {:?}", deregistered);
+//! // Deregister all plugins
+//! let deregistered = plugin_manager.deregister_all_plugins();
+//! println!("Deregistered plugins: {:?}", deregistered);
 //!
-//!     Ok(())
-//! }
+//! #    Ok(())
+//! # }
 //! ```
 //!
 //!
 //! This module provides a robust foundation for building plugin-based architectures
 //! in Rust applications, offering flexibility and ease of use.
+
 pub mod plugin_structs;
 
 use libloading::{Library, Symbol};
@@ -226,21 +227,6 @@ use std::collections::{HashMap, hash_map};
 use std::io::{Error, ErrorKind};
 use std::mem::ManuallyDrop;
 use std::path::Path;
-
-// pub enum Plugins {
-//     Base,
-//     Inventory(InventoryPlugins),
-// }
-
-// impl Plugins {
-//     pub fn name(&self) -> String {
-//         match self {
-//             Plugins::Base => String::from("Base"),
-//             Plugins::Inventory(inventory) => inventory.name(),
-//         }
-//     }
-
-// }
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
@@ -257,6 +243,18 @@ impl Default for PluginManagerNew {
     fn default() -> Self {
         Self::new()
     }
+}
+macro_rules! get_plugins_by_variant {
+    ($self:expr, $variant:path, $trait_type:ty) => {
+        $self
+            .plugins
+            .iter()
+            .filter_map(|(name, plugin)| match plugin {
+                $variant(inner) => Some((name, inner as $trait_type)),
+                _ => None,
+            })
+            .collect()
+    };
 }
 
 impl PluginManagerNew {
@@ -332,42 +330,17 @@ impl PluginManagerNew {
                 let (library, plugins) = self.load_plugin(path)?;
                 self.libraries.push(library);
                 for plugin in plugins {
-                    // ();
                     self.register_plugin(plugin);
-                    // match plugin {
-                    //     Plugins::Base(base) => {
-                    //         self.register_plugin(Plugins::Base(base));
-                    //     }
-                    //     _ => (),
-                    // }
-                    // self.register_plugins_vec(plugins, None);
                 }
-                // let _library = ManuallyDrop::new(library);
             }
             PluginEntry::Group(group_plugins) => {
                 group_plugins.iter().for_each(|(name, path)| {
-                    // TODO: Implement a match PluginGroups
-
                     log::debug!("Loading plugin group: {group_or_name}, {name} {path}");
                     let (library, plugins) = self.load_plugin(path).unwrap();
                     self.libraries.push(library);
                     for plugin in plugins {
                         self.register_plugin(plugin);
-                        // println!("{}", plugin.name());
-                        // match plugin {
-                        //     Plugins::Base(base) => {
-                        //         self.register_plugin(Plugins::Base(base));
-                        //         // ()
-                        //     }
-                        //     Plugins::Inventory(inventory) => {
-                        //         self.register_plugin(Plugins::Inventory(inventory));
-                        //     }
-                        // }
-                        // self.plugins.get_mut(&format!("{group_or_name}::{name}")).unwrap().register_plugin(plugin);
                     }
-
-                    // self.register_plugins_vec(plugins, Some(group_or_name.clone()));
-                    // let _library = ManuallyDrop::new(library);
                 });
             }
         }
@@ -398,8 +371,9 @@ impl PluginManagerNew {
     }
 
     pub fn register_plugin(&mut self, plugin: Plugins) {
-        log::info!("Registering plugin: {:?}", plugin.name());
-        let name = plugin.name().to_string();
+        let name = plugin.name();
+        log::info!("Registering plugin: {:?}", name);
+
         println!("Registering plugin: {}", name);
         if let hash_map::Entry::Vacant(entry) = self.plugins.entry(name.clone()) {
             entry.insert(plugin);
@@ -415,8 +389,8 @@ impl PluginManagerNew {
         self.plugins.get(name)
     }
 
-    #[allow(clippy::borrowed_box)]
     /// Gets an inventory plugin, returns None if the plugin is not a Base variant
+    #[allow(clippy::borrowed_box)]
     pub fn get_base_plugin(&self, name: &str) -> Option<&Box<dyn Plugin>> {
         self.plugins.get(name).and_then(|plugin| match plugin {
             Plugins::Base(base) => Some(base),
@@ -431,6 +405,34 @@ impl PluginManagerNew {
             Plugins::Inventory(inventory) => Some(inventory),
             _ => None,
         })
+    }
+
+    // pub fn get_plugins_by_group(&self, group: Plugins) -> Vec<&PluginInfo> {
+    //     self.plugins
+    //         .values()
+    //         .filter(|plugin_info| plugin_info.group.as_deref() == Some(group))
+    //         .collect()
+    // }
+
+    /// Generic method to get plugins by variant type with a mapper function
+    pub fn get_plugins_by_variant<'a, T>(
+        &'a self,
+        mapper: impl Fn(&'a Plugins) -> Option<T>,
+    ) -> Vec<(&'a String, T)> {
+        self.plugins
+            .iter()
+            .filter_map(|(name, plugin)| mapper(plugin).map(|p| (name, p)))
+            .collect()
+    }
+
+    /// Gets all Base plugins with their trait objects
+    pub fn get_plugins_by_type_base(&self) -> Vec<(&String, &Box<dyn Plugin>)> {
+        get_plugins_by_variant!(self, Plugins::Base, &Box<dyn Plugin>)
+    }
+
+    /// Gets all Inventory plugins with their trait objects
+    pub fn get_plugins_by_type_inventory(&self) -> Vec<(&String, &Box<dyn PluginInventory>)> {
+        get_plugins_by_variant!(self, Plugins::Inventory, &Box<dyn PluginInventory>)
     }
 }
 
@@ -728,94 +730,90 @@ mod tests {
         path_name.to_string_lossy().to_string()
     }
 
-    // #[test]
-    // fn get_plugin_path_test() {
-    //     set_env_var();
-    //     let plugin_manager = PluginManager::new();
-    //     let metadata = plugin_manager.get_plugin_metadata();
-    //     let plugins = metadata.plugins;
-    //     match plugins {
-    //         Some(plug_entry) => {
-    //             for (group, entry) in plug_entry {
-    //                 match entry {
-    //                     PluginEntry::Individual(path) => {
-    //                         assert_eq!(path, make_file_path("plugin_mods"));
-    //                     }
-    //                     PluginEntry::Group(path) => {
-    //                         path.iter().for_each(|(metadata_name, path)| {
-    //                             assert_eq!(path, &make_file_path("plugin_inventory"));
-    //                             assert_eq!(metadata_name, "inventory_a");
-    //                             assert_eq!(group, "inventory");
-    //                         });
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         None => {
-    //             panic!("No plugins found in metadata");
-    //         }
-    //     }
-    // }
+    #[test]
+    fn get_plugin_path_test() {
+        set_env_var();
+        let plugin_manager = PluginManagerNew::new();
+        let metadata = plugin_manager.get_plugin_metadata();
+        let plugins = metadata.plugins;
+        match plugins {
+            Some(plug_entry) => {
+                for (group, entry) in plug_entry {
+                    match entry {
+                        PluginEntry::Individual(path) => {
+                            assert_eq!(path, make_file_path("plugin_mods"));
+                        }
+                        PluginEntry::Group(path) => {
+                            path.iter().for_each(|(metadata_name, path)| {
+                                assert_eq!(path, &make_file_path("plugin_inventory"));
+                                assert_eq!(metadata_name, "inventory_a");
+                                assert_eq!(group, "inventory");
+                            });
+                        }
+                    }
+                }
+            }
+            None => {
+                panic!("No plugins found in metadata");
+            }
+        }
+    }
 
-    // #[test]
-    // fn activate_plugins_test() {
-    //     set_env_var();
-    //     let mut plugin_manager = PluginManager::new();
-    //     plugin_manager = plugin_manager.activate_plugins().unwrap();
-    //     assert!(plugin_manager.get_plugin("plugin_a").is_some());
-    //     assert_eq!(plugin_manager.plugins.len(), 3);
-    // }
+    #[test]
+    fn activate_plugins_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManagerNew::new();
+        plugin_manager = plugin_manager.activate_plugins().unwrap();
+        assert!(plugin_manager.get_plugin("plugin_a").is_some());
+        assert_eq!(plugin_manager.plugins.len(), 3);
+    }
 
-    // #[test]
-    // #[should_panic]
-    // /// Test for duplicate activation of plugins.
-    // fn activate_plugins_and_panic_test() {
-    //     set_env_var();
-    //     let mut plugin_manager = PluginManager::new();
-    //     plugin_manager = plugin_manager.activate_plugins().unwrap();
-    //     _ = plugin_manager.activate_plugins().unwrap();
-    // }
+    #[test]
+    #[should_panic]
+    /// Test for duplicate activation of plugins.
+    fn activate_plugins_and_panic_test() {
+        set_env_var();
+        let mut plugin_manager = PluginManagerNew::new();
+        plugin_manager = plugin_manager.activate_plugins().unwrap();
+        _ = plugin_manager.activate_plugins().unwrap();
+    }
 
-    // #[test]
-    // fn load_plugin_test() {
-    //     let plugin_manager = PluginManager::new();
-    //     let filename = make_file_path("plugin_mods");
-    //     let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
-    //     assert_eq!(plugins.len(), 2);
-    //     assert_eq!(plugins[0].name(), "plugin_a");
-    // }
+    #[test]
+    fn load_plugin_test() {
+        let plugin_manager = PluginManagerNew::new();
+        let filename = make_file_path("plugin_mods");
+        let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(plugins[0].name(), "plugin_a");
+    }
 
-    // #[test]
-    // fn load_plugin_and_panic_test() {
-    //     let plugin_manager = PluginManager::new();
-    //     let filename = make_file_path("plugin_mods");
-    //     let (_library, _) = plugin_manager.load_plugin(&filename).unwrap();
-    //     let filename = make_file_path("plugin_mods");
-    //     let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
-    //     assert_eq!(plugins.len(), 2);
-    //     assert_eq!(plugins[0].name(), "plugin_a");
-    // }
+    #[test]
+    fn load_plugin_and_panic_test() {
+        let plugin_manager = PluginManagerNew::new();
+        let filename = make_file_path("plugin_mods");
+        let (_library, _) = plugin_manager.load_plugin(&filename).unwrap();
+        let filename = make_file_path("plugin_mods");
+        let (_library, plugins) = plugin_manager.load_plugin(&filename).unwrap();
+        assert_eq!(plugins.len(), 2);
+        assert_eq!(plugins[0].name(), "plugin_a");
+    }
 
-    // #[test]
-    // fn activate_plugins_with_groups_test() {
-    //     set_env_var();
-    //     let plugin_manager = PluginManager::new().activate_plugins().unwrap();
+    #[test]
+    fn activate_plugins_with_groups_test() {
+        set_env_var();
+        let plugin_manager = PluginManagerNew::new().activate_plugins().unwrap();
 
-    //     // Check individual plugin
-    //     let plugin_a = plugin_manager.get_plugin("plugin_a").unwrap();
-    //     assert_eq!(plugin_a.group, None);
+        // Get all plugins in the "base" group
+        let inventory_plugins = plugin_manager.get_plugins_by_type_base();
+        assert_eq!(inventory_plugins.len(), 2);
 
-    //     // Check grouped plugin
-    //     let inventory_plugin = plugin_manager.get_plugin("inventory_a").unwrap();
-    //     assert_eq!(inventory_plugin.group, Some("inventory".to_string()));
+        // Get all plugins in the "inventory" group
+        let inventory_plugins = plugin_manager.get_plugins_by_type_inventory();
+        assert_eq!(inventory_plugins.len(), 1);
+        assert_eq!(inventory_plugins[0].1.name(), "inventory_a");
 
-    //     // Get all plugins in the "inventory" group
-    //     let inventory_plugins = plugin_manager.get_plugins_by_group("inventory");
-    //     assert_eq!(inventory_plugins.len(), 1);
-    //     assert_eq!(inventory_plugins[0].plugin.name(), "inventory_a");
-
-    //     assert_eq!(plugin_manager.plugins.len(), 3);
-    // }
+        assert_eq!(plugin_manager.plugins.len(), 3);
+    }
 
     // #[test]
     // fn get_all_plugin_names_and_groups_test() {

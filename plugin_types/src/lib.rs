@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 pub type PathString = String;
 pub type GroupOrName = String;
+pub type PluginName = String;
 pub type PluginResult = Result<(Library, Vec<Box<dyn Plugin>>), Box<dyn std::error::Error>>;
 pub type PluginCreate = unsafe fn() -> Vec<Box<dyn Plugin>>;
 
@@ -67,6 +68,13 @@ impl Plugins {
         match self {
             Plugins::Base(_) => String::from("Base"),
             Plugins::Inventory(_) => String::from("Inventory"),
+        }
+    }
+
+    pub fn execute(&self, context: &dyn Any) -> Result<(), Box<dyn std::error::Error>> {
+        match self {
+            Plugins::Base(base) => base.execute(context),
+            Plugins::Inventory(inventory) => inventory.execute(context),
         }
     }
 }

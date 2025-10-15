@@ -217,15 +217,10 @@ pub mod plugin_structs;
 
 use libloading::{Library, Symbol};
 use plugin_structs::{PluginCreate as PluginCreateNew, PluginResult as PluginResultNew};
-use plugin_types::{
-    GroupOrName, Plugin, PluginCreate, PluginEntry, PluginInfo, PluginInventory, PluginResult,
-    Plugins, PluginName
-};
+use plugin_types::{GroupOrName, Plugin, PluginEntry, PluginInventory, PluginName, Plugins};
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
-use std::io::{Error, ErrorKind};
-use std::mem::ManuallyDrop;
 use std::path::Path;
 
 #[derive(Deserialize, Debug)]
@@ -429,6 +424,19 @@ impl PluginManagerNew {
             .collect()
     }
 
+    /// Gets all plugins by their type, using a mapper function to extract the desired type
+    // pub fn get_plugins_by_group<T>(&self, plugin: Plugins) -> Vec<(&String, &Box<dyn T>)> {
+    //     get_plugins_by_variant!(self, plugin, &Box<dyn T>)
+    // }
+    // pub fn get_plugins_by_group<T>(&self) -> Vec<(&String, T)> {
+    //     let mapper = |plugin| match plugin {
+    //         Plugins::Base(base) => Some(base),
+    //         _ => None,
+    //     };
+    //     let res = self.get_plugins_by_variant::<T>(mapper);
+    //     res
+    // }
+
     /// Gets all Base plugins with their trait objects
     pub fn get_plugins_by_type_base(&self) -> Vec<(&String, &Box<dyn Plugin>)> {
         get_plugins_by_variant!(self, Plugins::Base, &Box<dyn Plugin>)
@@ -438,7 +446,7 @@ impl PluginManagerNew {
     pub fn get_plugins_by_type_inventory(&self) -> Vec<(&String, &Box<dyn PluginInventory>)> {
         get_plugins_by_variant!(self, Plugins::Inventory, &Box<dyn PluginInventory>)
     }
-    
+
     /// Deregisters the plugin with the given name.
     pub fn deregister_plugin(&mut self, name: &str) -> Option<String> {
         if let Some(plugin) = self.plugins.remove(name) {
@@ -467,9 +475,9 @@ impl PluginManagerNew {
     /// Gets all the **names** and **groups** of the registered plugins.
     pub fn get_all_plugin_names_and_groups(&self) -> Vec<(String, String)> {
         self.plugins
-           .iter()
-           .map(|(name, plugin)| (name.clone(), plugin.group_name()))
-           .collect()
+            .iter()
+            .map(|(name, plugin)| (name.clone(), plugin.group_name()))
+            .collect()
     }
 
     pub fn execute_plugin(
@@ -485,7 +493,6 @@ impl PluginManagerNew {
             Err(msg.into())
         }
     }
-
 }
 
 // pub struct PluginManager {
@@ -738,7 +745,6 @@ impl PluginManagerNew {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    // use plugin_mods::plugin_a::PluginA;
 
     use super::*;
 
@@ -795,7 +801,6 @@ mod tests {
             }
         }
     }
-
 
     #[test]
     fn get_plugin_metadata_test() {
@@ -925,7 +930,41 @@ mod tests {
         assert_eq!(plugin_manager.plugins.len(), 3);
     }
 
-    // TODO: write a test for PluginManager::execute_plugin
+    #[test]
+    fn execute_plugin_test() {
+        set_env_var();
+        let plugin_manager = PluginManagerNew::new().activate_plugins().unwrap();
+        let plugin_name = "plugin_a";
+        if let Some(plugin) = plugin_manager.get_plugin(plugin_name) {
+            let execution = plugin.execute(&());
+            assert!(execution.is_ok());
+        } else {
+            panic!("Plugin {} not found", plugin_name);
+        }
+    }
 
+    #[test]
+    fn get_plugins_by_type_test() {
+        set_env_var();
+        let plugin_manager = PluginManagerNew::new().activate_plugins().unwrap();
+        let base_plugins = plugin_manager.get_plugins_by_type_base();
+        assert_eq!(base_plugins.len(), 2);
+
+        // Check that the expected plugin names are present
+        let base_plugin_names: Vec<&str> =
+            base_plugins.iter().map(|(name, _)| name.as_str()).collect();
+        assert!(base_plugin_names.contains(&"plugin_a"));
+        assert!(base_plugin_names.contains(&"plugin_b"));
+
+        // Verify the debug output format for base plugins
+        for (name, plugin) in base_plugins {
+            let debug_output = format!("{:?}", plugin);
+            assert!(debug_output.contains("BasePlugin"));
+            assert!(debug_output.contains(name));
+        }
+
+        let inventory_plugins = plugin_manager.get_plugins_by_type_inventory();
+        assert_eq!(inventory_plugins.len(), 1);
+    }
     // TODO: write a test for PluginManager::get_plugins_by_group
 }

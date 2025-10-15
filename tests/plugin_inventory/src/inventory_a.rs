@@ -1,7 +1,7 @@
 use plugin_types::{Plugin, PluginInventory};
 use std::any::Any;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct InventoryA;
 
 impl Plugin for InventoryA {

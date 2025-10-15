@@ -2,6 +2,8 @@ use libloading::Library;
 use serde::Deserialize;
 use std::any::Any;
 use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Debug;
 
 pub type PathString = String;
 pub type GroupOrName = String;
@@ -43,14 +45,40 @@ pub trait Plugin: Send + Sync + Any {
     /// If the plugin has other methods, they can be accessed through
     /// the `as_any` method.
     fn execute(&self, context: &dyn Any) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Returns the group name
+    fn group(&self) -> String {
+        String::from("BasePlugin")
+    }
 }
 
 pub trait PluginInventory: Plugin {
     // loads the inventory
     fn load(&self);
+
+    /// Returns the group name
+    fn group(&self) -> String {
+        String::from("InventoryPlugin")
+    }
 }
 
-// #[derive(Debug, Clone)]
+impl Debug for dyn Plugin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {{ name: {} }}", Plugin::group(self), self.name())
+    }
+}
+
+impl Debug for dyn PluginInventory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {{ name: {} }}",
+            PluginInventory::group(self),
+            self.name()
+        )
+    }
+}
+
 pub enum Plugins {
     Base(Box<dyn Plugin>),
     Inventory(Box<dyn PluginInventory>),

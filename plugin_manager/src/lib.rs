@@ -222,6 +222,8 @@ use serde::Deserialize;
 use std::any::Any;
 use std::collections::{HashMap, hash_map};
 use std::path::Path;
+// use std::error::Error;
+use std::io::{Error, ErrorKind};
 
 #[derive(Deserialize, Debug)]
 pub struct Metadata {
@@ -424,7 +426,7 @@ impl PluginManagerNew {
             .collect()
     }
 
-    /// Gets all plugins by their type, using a mapper function to extract the desired type
+    // /// Gets all plugins by their type, using a mapper function to extract the desired type
     // pub fn get_plugins_by_group<T>(&self, plugin: Plugins) -> Vec<(&String, &Box<dyn T>)> {
     //     get_plugins_by_variant!(self, plugin, &Box<dyn T>)
     // }
@@ -438,11 +440,13 @@ impl PluginManagerNew {
     // }
 
     /// Gets all Base plugins with their trait objects
+    #[allow(clippy::borrowed_box)]
     pub fn get_plugins_by_type_base(&self) -> Vec<(&String, &Box<dyn Plugin>)> {
         get_plugins_by_variant!(self, Plugins::Base, &Box<dyn Plugin>)
     }
 
     /// Gets all Inventory plugins with their trait objects
+    #[allow(clippy::borrowed_box)]
     pub fn get_plugins_by_type_inventory(&self) -> Vec<(&String, &Box<dyn PluginInventory>)> {
         get_plugins_by_variant!(self, Plugins::Inventory, &Box<dyn PluginInventory>)
     }
@@ -491,6 +495,38 @@ impl PluginManagerNew {
             let msg = format!("Plugin '{}' not found", name);
             log::error!("{msg}");
             Err(msg.into())
+        }
+    }
+    pub fn with_path(mut self, path: &str, group: Option<&str>) -> Result<Self, Error> {
+        let path = Path::new(&path);
+        if path.exists() {
+            let path_string = if let Some(path_str) = path.to_str() {
+                path_str.to_string()
+            } else {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "Path contains invalid Unicode",
+                ));
+            };
+            if let Some(group_string) = group {
+                let group_info = HashMap::from([(
+                    group_string.to_string(),
+                    PluginEntry::Group(HashMap::from([(group_string.to_string(), path_string)])),
+                )]);
+                self.plugin_path.push(group_info);
+            } else {
+                // todo!()
+                // TODO: implement individual plugin registration
+                let individual_info =
+                    HashMap::from([("base".to_string(), PluginEntry::Individual(path_string))]);
+                self.plugin_path.push(individual_info);
+            };
+            Ok(self)
+        } else {
+            Err(Error::new(
+                ErrorKind::NotFound,
+                format!("FileNotFoundError: {:?}", path.as_os_str()),
+            ))
         }
     }
 }
@@ -966,5 +1002,16 @@ mod tests {
         let inventory_plugins = plugin_manager.get_plugins_by_type_inventory();
         assert_eq!(inventory_plugins.len(), 1);
     }
-    // TODO: write a test for PluginManager::get_plugins_by_group
+
+    #[test]
+    fn with_path_test() {
+        set_env_var();
+        let path = "../target/release/libplugin_tasks.so";
+        let plugin_manager = PluginManagerNew::new()
+            .with_path(path, None)
+            .unwrap()
+            .activate_plugins()
+            .unwrap();
+        assert_eq!(plugin_manager.plugins.len(), 4);
+    }
 }

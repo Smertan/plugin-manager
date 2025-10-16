@@ -1006,9 +1006,9 @@ mod tests {
     #[test]
     fn with_path_test() {
         set_env_var();
-        let path = "../target/release/libplugin_tasks.so";
+        let path = make_file_path("plugin_tasks");
         let plugin_manager = PluginManagerNew::new()
-            .with_path(path, None)
+            .with_path(&path, None)
             .unwrap()
             .activate_plugins()
             .unwrap();
